@@ -1,0 +1,2400 @@
+---
+title: Explore the *Phytophthora* trait database
+author: "Louise Barwell"
+date: "22 May 2019"
+output: html_document
+header-includes:
+  - \usepackage{color}
+---
+
+```{r setup, echo = FALSE}
+rm(list=ls())
+knitr::opts_chunk$set(echo = FALSE,  message = FALSE, warning = FALSE, autodep = TRUE)
+#https://lukejharmon.github.io/pcm/ good summary of phylogenetic comparative methods
+```
+
+This document is intended to help users reproduce the analyses in Barwell *et al.* (2019) A conceptual trait-based framework for invasion risk assessment of oomycete plant pathogens (in prep.). We explore the *Phytophthora* trait database and it's potential uses for plant health risk assessment. Using an ITS phylogeny, We fit models of trait evolution, visualise the phylogenetic distribution of traits and quantify the evolutionary lability of each trait. We then explore patterns of trait covariance and resource allocation trade-offs in the context of biotic niche partitioning, abiotic environmental filtering and movement of species.     
+
+## Trait data and phylogeny
+
+The trait data is stored in the file '2018-01-29_Phytophthora_trait_database_merged.csv'.
+```{r processing}
+
+#process the traits and phylogeny, so the names match 
+library(corrplot)
+library(geiger)
+library(phytools)
+library(ape)
+library(phangorn)
+library(phylosignal)
+library(ggplot2)
+library(plyr)
+library(ggtree)# Using the development version.  To install it:
+#source("https://bioconductor.org/biocLite.R")
+#biocLite("ggtree")
+library(scales)
+library(ggpubr)
+library(boral)
+library(RColorBrewer)
+library(MCMCglmm)
+library(R2jags)
+library(reshape2)
+library(spptest)
+library(kableExtra)
+library(ggrepel)
+library(ggnewscale)
+library(ggforce)
+library(scatterpie)
+library(vegan)
+
+
+
+traits <-
+  read.csv("data/2018-01-29_Phytophthora_trait_database_merged.csv",
+           stringsAsFactors = FALSE,
+           na.strings = c("#N/A", "NA"))
+# for the purposes of calculating phylogenetioc signal, the type of NA is irrelevant
+# however, whn it comes to plotting trait values on to the phylogeny we will need to distinguish between "missing data" and "absent structures".
+
+traits$species_name <-
+  gsub("Phytophthora ",
+       "P. ",
+       traits$species_name)
+
+traits$species_name <-
+  gsub("austrocedrae",
+       "austrocedri",
+       traits$species_name)
+
+traits$species_name <- 
+  gsub("peligrandis", "pelgrandis", traits$species_name)
+traits$species_name <- 
+  gsub("bishii", "bisheria", traits$species_name)
+traits$species_name <- 
+  gsub("flexousa", "flexuosa", traits$species_name)
+traits$species_name <- 
+  gsub("emanzi", "emzansi", traits$species_name)
+
+which_na <- function(x){
+  length(which(is.na(x)))
+}
+
+
+# function to count how many values are not NA
+which_not_na <- function(x){
+  length(which(!is.na(x)))
+}
+
+traits <-
+  traits[,-grep("X", colnames(traits))]
+
+traits$sporangiophore <- gsub("^U$", "UN", traits$sporangiophore)
+```
+
+Continuous traits
+```{r}
+cont_variables <- 
+  names(which(sapply(traits, is.double)))
+cont_variables
+```
+Discrete traits
+```{r discrete_var}
+discrete_variables <- 
+  names(which(sapply(traits, is.character)))
+discrete_variables <- discrete_variables[-grep("species_name|phylo_clade|phylo_sub_clade", discrete_variables)]    
+discrete_variables
+```
+The phylogeny is stored in the file 'updated - Posterior output.newick'.  It was created by Treena Burgess on the 28/01/2018 and now includes the new species described in 2017 and 2018.  
+```{r message = FALSE, warning=FALSE}
+
+
+
+Phytoph_tree <-
+  read.tree("data/updated - Posterior output.newick")
+
+# clean the tip labels to match the trait database
+Phytoph_tree$tip.label <- gsub("Phytophthora_", "P. ", Phytoph_tree$tip.label)
+Phytoph_tree$tip.label <- gsub("x_", "x ", Phytoph_tree$tip.label)
+Phytoph_tree$tip.label <- gsub("austrocedrae",
+                               "austrocedri",
+                               Phytoph_tree$tip.label)
+Phytoph_tree$tip.label[grep(" sp_", Phytoph_tree$tip.label)] <- 
+  paste0(gsub("sp_", "'", Phytoph_tree$tip.label[grep(" sp_", Phytoph_tree$tip.label)]), "'")
+Phytoph_tree$tip.label <- gsub("P. gondwanense", "P. gondwanensis", Phytoph_tree$tip.label)
+Phytoph_tree
+
+```
+Is it rooted?
+```{r}
+is.rooted(Phytoph_tree)
+```
+
+
+
+It is bifurcating?
+```{r}
+is.binary(Phytoph_tree)
+```
+There are some polytomies. The functions to fit trait evolution models requirebifurcating trees.  Clade 9 and 10 are not well-resolved. To resolve them, first identify the most recent commone ancestor of clades 9 and 10. There are three ways to resolve this node. We will use the one that correctly resolves species into their recognised clades.  
+
+Is it ultrametric?
+```{r}
+is.ultrametric(Phytoph_tree)
+```
+No, we'll Estimate the ages of the nodes by assuming branch lengths are proportional to the number of substitutions.
+
+```{r }
+
+# resolve polyomies randomly
+Phytoph_tree <- multi2di(Phytoph_tree)
+Phytoph_tree$edge.length[Phytoph_tree$edge.length==0] <- max(nodeHeights(Phytoph_tree))*0.001
+# convert zero branch lengths to a small number 
+
+# The splitting of clade 9 and 10 is not well-resolved (very short branch lengths) and results in  clade 10 clustering within clade 9. Probably because the two cannot be well-resolved using ITS-only?
+
+# We can fix this by collapsing this node to a polytomy and resolving it in a way that groups
+# clade 9 and 10 species correctly
+
+# di2multi can collapse nodes below a certain branch length, but we want to taregt only the Clde 9 /10 node and avoid collapsing other nodes, where we don't have clade information
+
+# first identify the edge and make it the shortest one in the tree
+# it will be the eldest  child of the most recent commone ancestor of clade 9 and 10 species
+
+Phytoph_tree$edge.length[min(which.edge(Phytoph_tree, group = traits$species_name[traits$phylo_clade %in% c("10", "9")]))] <- min(Phytoph_tree$edge.length)/2
+
+
+
+# node_to_collapse <- Children(Phytoph_tree, 
+#                              mrca.phylo(Phytoph_tree, 
+#                                         node = traits$species_name[traits$phylo_clade %in% c("9", "10")]))[1]
+
+
+# collapse to a polytomy
+Phytoph_tree <- di2multi(Phytoph_tree, min(Phytoph_tree$edge.length)*1.5)
+
+# then resolve all 3 ways
+
+
+all_ways <- resolveNode(Phytoph_tree, node = mrca.phylo(Phytoph_tree, node = which(Phytoph_tree$tip.label %in% traits$species_name[traits$phylo_clade %in% c("9", "10")])))
+
+for (i in 1:length(all_ways)){
+  all_ways[[i]]$edge.length[all_ways[[i]]$edge.length==0] <- max(nodeHeights(all_ways[[i]]))*0.001
+  all_ways[[i]] <- chronopl(phy = all_ways[[i]],
+           lambda = 0)
+}
+separate_clade10 <- rep(NA, length(all_ways))
+# check the species in clade 9 don;t include clade 10 
+for(i in 1:length(all_ways)){
+  separate_clade10[i] <- 
+  length(setdiff(extract.clade(all_ways[[i]], node = mrca.phylo(all_ways[[i]], node = which(all_ways[[i]]$tip.label %in% traits$species_name[traits$phylo_clade %in% "9"])))$tip.label , traits$species_name[traits$phylo_clade %in% "9"])) == 0 
+# the second way is consistent with clade 
+}
+Phytoph_tree <- all_ways[[which(separate_clade10)]]
+
+```
+
+How many species are present in both the trait database and the phylogeny?
+```{r}
+
+length(intersect(traits$species_name, Phytoph_tree$tip.label))
+intersect(traits$species_name, Phytoph_tree$tip.label)
+
+```
+How many missing values for each trait?
+```{r }
+apply(traits, 2, which_na)
+```
+How many are known hybrids?
+```{r}
+length(grep("P. x ", Phytoph_tree$tip.label, value = TRUE))
+grep("P. x ", Phytoph_tree$tip.label, value = TRUE)
+```
+
+```{r}
+n_equals <- apply(traits[traits$species_name %in% intersect(traits$species_name, Phytoph_tree$tip.label), grep("species_name|phylo_|date", colnames(traits), invert = TRUE, value = TRUE)], 2, which_not_na)
+```
+
+
+```{r}
+traits_labels <- traits
+
+traits_labels$papillate <- # ordinal
+  revalue(traits_labels$papillate, 
+          c("NP" = "non-papillate",
+            "SP" = "semi-papillate",
+            "P" = "papillate"))
+
+traits_labels$proliferation <- # binary
+  revalue(traits_labels$proliferation, 
+          c("NP" = "non-proliferating",
+            "P" = "proliferatating"))
+  
+traits_labels$sporangiophore <- # categorical
+  revalue(traits_labels$sporangiophore, 
+          c("SS" = "simple sympodial",
+            "CLS" = "closed sympodium",
+            "CS" = "compound sympodial",
+            "UN" = "unbranched",
+            "U" = "unbranched",
+            "DM" = "downy mildew shape",
+            "IB" = "irregularly branched"))
+
+traits_labels$caduceus <- # binary
+  revalue(traits_labels$caduceus,
+          c("C" = "caducous",
+            "NC" = "non-caducous"))
+
+traits_labels$pedicel_length <- # exclude
+  revalue(traits_labels$pedicel_length,
+          c("S" = "short pedicle",
+            "M" = "medium pedicel",
+            "L" = "long pedicel"))
+
+traits_labels$chlamydospores <- #binary
+  revalue(traits_labels$chlamydospores,
+          c("CH" = "chlamydospores",
+            "NCH" = "no chlamydospores")
+  )
+
+traits_labels$hyphal_swelling <- #binary
+  revalue(traits_labels$hyphal_swelling,
+          c("HS" = "hyphal swellings",
+            "NHS" = "no hyphal swellings")
+  )
+
+traits_labels$oospores <- #binary
+  revalue(traits_labels$oospores,
+          c("O" = "oospores",
+            "NO" = "no oospores")
+  )
+
+traits_labels$ho_he_s <- #categorical
+  revalue(traits_labels$ho_he_s,
+          c("S" = "sterile",
+            "HO" = "homothallic",
+            "HE" = "heterothallic",
+            "HE/HO" = "heterothallic")
+  )
+
+traits_labels$oogonia_wall <- #categorical
+  revalue(traits_labels$oogonia_wall,
+          c("S" = "smooth",
+            "O" = "ornamented",
+            "W" = "wavy")
+  )
+
+traits_labels$tapering_base <- #"binary"
+  revalue(traits_labels$tapering_base,
+          c("TB" = "tapering base",
+            "NTB" = "non-tapering base")
+  )
+
+# antheridial attachment
+traits_labels$amphi_para <- #"categorical"
+  revalue(traits_labels$amphi_para,
+          c(            "A" = "amphigynous",
+                        "P" = "paragynous",
+                        "B" = "both amphigynous and paragynous")
+  )
+
+# space between oospore and oogonial wall
+traits_labels$aplerotic_plerotic <- #categorical
+  revalue(traits_labels$aplerotic_plerotic,
+          c("P" = "plerotic",
+            "A" = "aplerotic",
+            "SA" = "slightly aplerotic",
+            "B" = "both plerotic and aplerotic")
+  )
+
+traits_labels$oospore_wall_cat <- #exclude
+  revalue(traits_labels$oospore_wall_cat,
+          c("L" = "low (< 0.30)",
+            "M" = "medium (0.30 - 0.49)",
+            "H" = "high (> 0.50)"))
+
+traits_labels$gr_at_opt_cat <- #exclude
+  revalue(traits_labels$gr_at_opt_cat,
+          c("S" = "slow (< 5)",
+            "M" = "medium (5 - 10)",
+            "F" = "fast (> 10)"))
+
+traits_labels$temp_profile <- #exclude
+  revalue(traits_labels$temp_profile,
+          c("L" = "low (optimum < 22.5)",
+            "M" = "medium (optimum 22.5 - 27.5)",
+            "H" = "high (optimum > 27.5)"))
+
+traits_labels$temp_range_cat <- #exclude
+  revalue(traits_labels$temp_range_cat,
+          c("N" = "narrow (< 20)",
+            "M" = "medium (21 - 27)",
+            "W" = "wide (> 27)"))
+
+```
+
+
+##Modelling trait evolution
+
+###Univariate comparison of evolutionary models
+
+Below, we fit nine models of trait evolution to each of the 24 ecological and morphological traits to test which evolutionary theory best predicts the observed distribution of trait values.    The likelihood of each model fit is compared using AIC framework, so that models with additional parameters are penalised and must signifantly improve model fit to justify their inclusion.  The figures below show $\Delta AIC$ values for each of the models.  A value of $\Delta AIC = 0$ represents the best model for that trait.  
+
+```{r }
+
+#define the bounds for the parameter search
+bds <- list(delta = c(min = 0.001, max = 100),
+            lambda = c(exp(-500), 1),
+            slope = c(-1000, 1000),
+            alpha = c(min = exp(-500), max = 25))
+
+# fit each model for each trait
+fit_cont_traits <- list()
+fit_cont_traits_all <- list()
+for (i in 1:length(cont_variables)){
+  # what parameters estimate(s) do we want to reprt from each model?
+  models=c("BM", "OU", "EB", "trend", "white", "lambda", "kappa", "delta", "drift")
+  par <- c(NA, "alpha", "a", "slope", NA, "lambda", "kappa", "delta", "drift")
+  parest <- rep(NA, length(par))
+  AICc <- rep(NA, length(models))
+
+  fit_cont_models <- list()
+  for(m in which(!is.na(models))){
+    x <-
+      fitContinuous(phy = Phytoph_tree,
+                  dat = setNames(as.numeric(as.factor(traits[!is.na(traits[,cont_variables[i]]),cont_variables[i]])),
+                                        traits[!is.na(traits[,cont_variables[i]]),"species_name"]),
+                  #transform = cont_models[m],
+                  model = models[m],
+                  bounds = bds,
+                  ncores = 4)
+
+    AICc[m] <- x$opt$aicc
+    parest[m] <- x$opt[par[m]]
+    fit_cont_models[[m]] <- x
+  }
+
+  fit_cont_traits[[i]] <- data.frame(AICc = AICc,
+                                     trait = cont_variables[i],
+                                     trait_evolution_model = models,
+                                     par = par,
+                                     parest  = as.numeric(as.character(parest)),
+                                     stringsAsFactors = FALSE)
+  fit_cont_traits_all[[i]] <- fit_cont_models
+
+}
+
+
+delta_aic<-function(x) x-x[which.min(x)]
+for (i in 1:length(fit_cont_traits)){
+  fit_cont_traits[[i]]$dAICc <- delta_aic(fit_cont_traits[[i]]$AICc)
+}
+
+
+# compile the values of lambda and whether they are significantly different from that expected under Brownian Motion (where phylogenic relatedness explains trait variation) or white noise (trait values are distributed at random across the phylogeny)
+lambda_est_cont <- do.call(
+  rbind,
+  lapply(1:length(cont_variables),
+                              function(i)
+                                data.frame(trait = cont_variables[i],
+                                           lambda = fit_cont_traits_all[[i]][[which(models == "lambda")]]$opt$lambda,
+             pBM = pchisq(2*(fit_cont_traits_all[[i]][[which(models == "lambda")]]$opt$lnL - fit_cont_traits_all[[i]][[1]]$opt$lnL), 1, lower.tail = FALSE),
+             prandom = pchisq(2*(fit_cont_traits_all[[i]][[which(models == "lambda")]]$opt$lnL - fit_cont_traits_all[[i]][[5]]$opt$lnL), 1, lower.tail = FALSE),
+             stringsAsFactors = FALSE))
+)
+
+
+#save(lambda_est_cont, file = "lambda_est_cont.rData")
+#save(fit_cont_traits, file = "fit_cont_traits.rData")
+#save(fit_cont_traits_all, file = "fit_cont_traits_all.rData")
+
+
+
+```
+```{r fig.height=16, fig.width=8, warning=FALSE}
+
+# load("fit_cont_traits.rData")
+# load("fit_cont_traits_all.rData")
+# load("lambda_est_cont.rData")
+#load("kappa_est_cont.rData")
+#load("delta_est_cont.rData")
+fit_cont_traits_df <- do.call(rbind, fit_cont_traits)
+fit_cont_traits_df$parest_lab <- NA
+fit_cont_traits_df$parest_lab[!is.na(fit_cont_traits_df$par)] <-
+  paste0(fit_cont_traits_df$par[!is.na(fit_cont_traits_df$par)], "==", sprintf("%.2f", round(fit_cont_traits_df$parest[!is.na(fit_cont_traits_df$par)], 2)))
+
+
+fit_cont_traits_df$trait_evolution_model <- factor(fit_cont_traits_df$trait_evolution_model, levels = c("BM", "OU", "EB", "trend", "lambda", "kappa", "delta", "drift", "white"))
+fit_cont_traits_df$trait <- as.character(fit_cont_traits_df$trait)
+fit_cont_traits_df$trait <- sapply(1:length(fit_cont_traits_df$trait), function(i) paste0(fit_cont_traits_df$trait[i], "~(n==", n_equals[as.character(fit_cont_traits_df$trait[i])], ")"))
+
+cbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#999999")
+
+gg1 <- ggplot(data = fit_cont_traits_df,
+                     aes(x = trait_evolution_model,
+                         y = dAICc,
+                         fill = trait_evolution_model))
+gg2 <- gg1 + geom_col() + xlab("Trait evolution model") + ylab(expression(Delta~AIC))
+gg3 <- gg2 + theme(panel.grid = element_blank(),
+                   axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+gg4 <- gg3 + facet_wrap(~trait, nrow = 4, ncol = 2, labeller = label_parsed)
+gg5 <- gg4 + scale_fill_manual(values = cbPalette)
+#gg5 <- gg4 + geom_text(data = lambda_est,
+#                       aes(x = 6, y = 0, label = lambda), parse = TRUE, angle = 90, #hjust = -0.2)
+gg6 <- gg5 + theme(legend.position = "none")
+gg7 <- gg6 + geom_text(aes(x = trait_evolution_model, 
+                           y = dAICc,
+                           label = parest_lab,
+                           angle = 90,
+                           hjust = 0),
+                       parse = TRUE) + ylim(0,120)
+gg7
+
+
+
+```
+
+**Fig. 1**  Comparison of trait evolution models for seven continuous traits of 177 Phytophthora species.  The nine models of trait evolution are compared using AIC with a correction for small sample sizes.  Models are ranked based on $\Delta AIC$, with lower values indicating better model fit to the observed distribution of trait values.  Interpreting the parameters $\lambda$, $\kappa$ and $\delta$ as described in the section "Interpreting trait evolution models" is valid only if those models perform well relative to other models.  Among the continuous traits, the lambda model generally performs the best of all the models.  Low values of $\lambda$ can be interpreted as evidence for selection pressures, which disrupt the pattern of trait covariance expected if trait divergence was proportional only to the amount of shared phylogenetic history (Brownian Motion).  Among the continuous traits $\lambda$ is usually quite close to 1, indicating the observed trait values are strongly structured by the amount of shared phylogenetic history between two species.  The kappa transformation also performs relatively well.  Many of the values are closer to 0 which could be interpreted as  evidence for short periods of rapid evolution followed by longer periods of stasis in which no change occurs (punctuated equilibrium).  The values of $\delta$ are generally much higher than 1, which could indicate that recent evolution in these traits has been especially rapid.   However, the delta model doesn't generally perform that well, so inferring anything about recent rates of evolution relative to more basal part of the tree might be invalid.  The colours of the bars correspond to the models described in the section "Interpreting trait evolution models".  
+
+
+
+
+
+
+
+```{r message=FALSE, warning=FALSE, results="hide"}
+
+# throws out convergence errors when estimating lambda
+
+# I tried the function below from Liam Revell, which does converge, but ultimately returns exactly the same results, so I think it's safe to ignore the errors
+
+# Note that for discrete traits, it seems to be necessary to specify a model for the transition rates between traits.  What should this be?  I've specified equal rates, where a single parameter governs all transition rates. 
+fitLambda<-function(tree,trait,model="ER"){
+    lik<-function(lambda,tree,trait,model)
+    logLik(ace(trait,geiger::rescale(tree,model="lambda",lambda),
+        type="discrete",model=model))
+    obj<-optimize(lik,c(0,1),tree=tree,trait=trait,model=model,maximum=TRUE)
+    fit<-ace(trait,geiger::rescale(tree,model="lambda",lambda=obj$maximum),
+        type="discrete",model=model)
+    I<-fit$index.matrix
+    fitted.Q=matrix(fit$rates[I],dim(I)[1],dim(I)[2],
+        dimnames=list(dimnames(fit$lik.anc)[[2]],
+        dimnames(fit$lik.anc)[[2]]))
+    diag(fitted.Q)<--rowSums(fitted.Q,na.rm=TRUE)
+    list(Q=fitted.Q,lambda=obj$maximum,logLik=logLik(fit))
+}
+#define the bounds for the parameter search -  as before but remove the parameters for models taht cannot be fitted to discrete traits
+bds <- list(delta = c(min = 0.001, max = 100),
+            lambda = c(exp(-500), 1),
+            a = c(min = -10, max = 10))
+
+fit_discrete_traits <- list()
+fit_discrete_traits_all <- list()
+for (i in 1:length(discrete_variables)){
+  models=c("BM", "OU", "EB", "trend", "white", "lambda", "kappa", "delta", "drift")
+  discrete_models <- c("none", NA, "EB", NA, "white", "lambda", "kappa", "delta", NA)
+  par <- c(NA, "alpha", "a", "slope", NA, "lambda", "kappa", "delta", NA)
+  parest <- rep(NA, length(par))
+  AICc <- rep(NA, length(models))
+  fit_discrete_models <- list()
+  for(m in which(!is.na(discrete_models))){
+
+    x <-
+      fitDiscrete(phy = Phytoph_tree,
+                  dat = setNames(as.numeric(as.factor(traits[!is.na(traits[,discrete_variables[i]]),discrete_variables[i]])),
+                                        traits[!is.na(traits[,discrete_variables[i]]),"species_name"]),
+                 transform = discrete_models[m],
+                 model = "ER",
+                 bounds = bds,
+                  ncores = 4)
+
+    AICc[m] <- x$opt$aicc
+    parest[m] <- x$opt[par[m]]
+    fit_discrete_models[[m]] <- x
+  }
+
+  fit_discrete_traits[[i]] <- data.frame(AICc = AICc,
+                                         trait = discrete_variables[i],
+                                         trait_evolution_model = models,
+                                         par = par,
+                                         parest  = as.numeric(as.character(parest)),
+                                         stringsAsFactors = FALSE)
+  fit_discrete_traits_all[[i]] <- fit_discrete_models
+
+}
+
+delta_aic<-function(x) x-x[which.min(x)]
+for (i in 1:length(fit_discrete_traits)){
+  fit_discrete_traits[[i]]$dAICc <- delta_aic(fit_discrete_traits[[i]]$AICc)
+}
+
+# compile the values of lambda and whether they are significantly different from that expected under Brownian Motion (where phylogenic relatedness explains trait variation) or white noise (trait values are distributed at random across the phylogeny)
+lambda_est_discrete <- do.call(
+  rbind,
+  lapply(1:length(discrete_variables),
+                              function(i)
+                                data.frame(trait = discrete_variables[i],
+                                           lambda = fit_discrete_traits_all[[i]][[which(models == "lambda")]]$opt$lambda,
+             pBM = pchisq(2*(fit_discrete_traits_all[[i]][[which(models == "lambda")]]$opt$lnL - fit_discrete_traits_all[[i]][[1]]$opt$lnL), 1, lower.tail = FALSE),
+             prandom = pchisq(2*(fit_discrete_traits_all[[i]][[which(models == "lambda")]]$opt$lnL - fit_discrete_traits_all[[i]][[5]]$opt$lnL), 1, lower.tail = FALSE),
+             stringsAsFactors = FALSE))
+)
+
+
+#save(lambda_est_discrete, file = "lambda_est_discrete.rData")
+#save(fit_discrete_traits, file = "fit_discrete_traits.rData")
+#save(fit_discrete_traits_all, file = "fit_discrete_traits_all.rData")
+
+```
+
+```{r fig.height=22, fig.width=8, warning=FALSE}
+
+  # load("fit_discrete_traits.rData")
+  # load("fit_discrete_traits_all.rData")
+  # load("lambda_est_discrete.rData")
+
+fit_discrete_traits_df <- do.call(rbind, fit_discrete_traits)
+
+
+fit_discrete_traits_df <- fit_discrete_traits_df[!is.na(fit_discrete_traits_df$dAICc),]
+
+fit_discrete_traits_df$trait_evolution_model <- factor(fit_discrete_traits_df$trait_evolution_model, levels = c("BM", "EB", "lambda", "kappa", "delta", "white"))
+fit_discrete_traits_df$trait <- as.character(fit_discrete_traits_df$trait)
+fit_discrete_traits_df$trait <- sapply(1:length(fit_discrete_traits_df$trait), function(i) paste0(fit_discrete_traits_df$trait[i], "~(n==", n_equals[as.character(fit_discrete_traits_df$trait[i])], ")"))
+
+fit_discrete_traits_df$parest_lab <- NA
+fit_discrete_traits_df$parest_lab[!is.na(fit_discrete_traits_df$par)] <-
+  paste0(fit_discrete_traits_df$par[!is.na(fit_discrete_traits_df$par)], "==", sprintf("%.2f", round(fit_discrete_traits_df$parest[!is.na(fit_discrete_traits_df$par)], 2)))
+
+#model_col <- data.frame(trait_evolution_model = c("BM", "OU", "EB", "trend", "lambda", #"kappa", "delta", "drift", "white"), model_col = cbPalette)
+gg1 <- ggplot(data = fit_discrete_traits_df,
+                     aes(x = trait_evolution_model,
+                         y = 1+dAICc,
+                         fill = trait_evolution_model))
+gg2 <- gg1 + geom_col() + xlab("Trait evolution model") + ylab(expression(Delta~AIC))
+gg3 <- gg2 + theme(panel.grid = element_blank(),
+                   axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+gg4 <- gg3 + facet_wrap(~trait, nrow = 9, ncol = 2, labeller = label_parsed)
+gg5 <- gg4 + scale_fill_manual(values = cbPalette[which(!is.na(c("none", NA, "EB", NA, "lambda", "kappa", "delta", NA, "white")))])
+
+gg6 <- gg5 + theme(legend.position = "none") + scale_y_continuous(trans='log10')
+gg7 <- gg6 + geom_text(aes(x = trait_evolution_model, 
+                           y = 1+dAICc,
+                           label = parest_lab,
+                           angle = 90,
+                           hjust = 0),
+                       parse = TRUE)
+gg7
+
+
+```
+
+**Fig. 2**  Comparison of trait evolution models for 17 discrete traits of 177 Phytophthora species.  Note the y axis is log $1+ \Delta AIC$  The six models of trait evolution are compared using AIC with a correction for small sample sizes.  Models are ranked based on $\Delta AIC$, with $\Delta AIC = 0$ indicating the best fitting model to the observed distribution of trait values.  In general, either the kappa or lambda transformations of the tree seem to best fit the distribution of the categorical traits across the tree.  $\lambda$ is generally rather high across the categorical traits, suggesting there is a strong phylogenetic signal in most traits.  For kappa, values are generally low, which is evidence that traits may evolve in rapid bursts, punctuated by long periods of stability.   There may be some issues with convergence of lambda that we need to address before we can compare models of trait evolution for categorical traits with confidence (e.g. parameter estimeates for proliferation trait are at the limits of the optimisation search bounds).  The method is generally applied to continuous traits.  When applied to categorical traits, we have to make assumptions about the rates of transition from one state to another and whether this varies between traits or is more likely in one direction than another.  Tweaking this part of the model may help address the convergence issues.  The only version I had time to run was an "equal-rates" model with a single parameter for all transition rates.  The colours of the bars correspond to the models described in the section "Interpreting trait evolution models".  
+
+
+Summarise the number of times each model is within 5AIcc units of the best-supported model.  
+The $\lambda$ branch length transformation model of trait evolution consistently performs well across all traits and seems, overall, to be the best model.  $\kappa$ and $\delta$ transformations also perform resoanbly well across traits.  However, given that $\kappa$ and $\delta$ parameters are likely to be biased when taxa are not fully sampled (e.g. when there are extinct or undescribed species missing from the phylogeny), and the $\lambda$ parameter is not, we'll base our phylogenetic signal inferences on $\lambda$.    
+```{r}
+
+best_models <- rbind(do.call(rbind, fit_discrete_traits), do.call(rbind, fit_cont_traits))
+best_models$trait_evolution_model <- as.character(best_models$trait_evolution_model)
+sort(table(best_models[best_models$dAICc <= 5,"trait_evolution_model"]), decreasing = TRUE)
+
+```
+
+
+###Interpreting trait evolution models
+
+In theory, comparison of these models should allow us to link patterns in the phylogeny with evolutionary processes (Pagel 1999 Nature 401:877-884), but there do seem to be quite a few pitfalls in interpreting the model parameters and what these mean in terms of the underlying evolutionary processes (e.g. see Cooper et al. 2016 Biol. J. Linn. Soc. 118: 64-77)    
+
+The models make the following assumptions about the evolutionary processes generating variation in traits.  
+
+####<span style="color:black">Brownian Motion (BM)</span>
+Brownian motion is also known as diffusion.  Applied in the phylogenetic context (Felsenstein 1973 S. Am. J. Hum. Genet. 25:471-492) it represents a "random walk" along the branches of the phylogeny.  This is the simplest version of the model where the trait value is assumed to change at random, in both rate and direction, in a given time period.  Across the tree, the mean change is zero, so the expected variance in trait values at the tips is proportional to the amount of shared phylogenetic history between species or the sum of the branch lengths.  This can be intepreted as traits changing only through genetic drift and is also known as the neutral drift model.  Traits values of closely related species should be more similar than distantly related species.  It is usually the null model of trait evolution, against which observed trait values are compared to quantify phylogenetic signal.  The basic Brownian motion model has been extended many times, by the addition of one or more parameters, usually to transform the branch lengths in some way that tries to account for a particular evoutionary process.  Some of these extensions are described below.  For those transformations, When the $\lambda$, $\delta$ or $\kappa$ parameters equal 1, the models predict Brownian motion.  
+
+####<span style="color:#E69F00">Ornstein-Uhlenbeck model (OU)</span>  
+The Ornstein-Uhlenbeck model (Lande 1976 Evolution 30:314-334; Butler and King 2004 . Am. Nat. 164:683-695) is an extension of the Brownian Motion model with an additional parameter, $\alpha$, that attempts to model the strength of stabilising selection, or the pull, towards the trait's optimum adaptive value, $\theta$.  The strength of the stabilising selection is assumed to be shared across a clade or some related subset of species.  In theory, if the OU model fits the data better than th BM model, this could be interpreted as evidence for stabilising selection on that trait.  However, in practice, there are other evolutionary or environmental factors that could generate the patterns expected under an OU model, for example, phenotypic plasticity.  
+
+####<span style="color:#56B4E9">Early-burst model (EB)</span>
+The Early Burst model (Harmon et al. 2010 Evolution 64:2385-2396) is also known as the accelerating-decelerating model (Blomberg et al. 2003 Evolution 57:717-745) and assumes that trait evolution reflects rapid diversification (adaptive radiation) in the basal part of the tree, followed by reduced rates of evolution as increased species richness generates stronger interspecific competition.  The model has a rate change parameter, a, defining the the rate of evolution through time.  This rate is assumed to decrease or increase exponentially through time.  The $\delta$ transformation of the Brownian Motion model (see below) is related to the Early Burst model.  It is assumed that some ecological opportunity to exploit new niches underpins rapid diversifications/radiations, for example invasion, extinction of competitors or a novel innovation (Ingram et al. 2012 J. Evol. Biol. 25: 1902-1910).  For example, whole genome duplication events are hypothesised to underpin the diversification of Phytophthora as a genus (Seidl et al. 2012 Genome Biology and Evolution, 4, 199-211) and, within the genus, the adaptive radiation that generated P. infestans and and many of it's close relatives.  It is hypothesised that the expansion of gene families directly or indirectly involved in pathogenicity allowed Phytophthoras to exploit new hosts and diverge into distinct species.            
+
+####<span style="color:#009E73">Trend</span>
+The trend model (Hansen and Martins 1996 Evolution 50:1404-1417) extends the Brownian Motion model so that the mean rate of trait evolution (0 in the BM model) is assumed to show a linear trend through time (either increasing or decreasing).  It has one additional parameter for the slope of this trend. The expected mean trait value at time t is normally distributed with mean proptional to time.  A good fit of this model can be interpreted as evidence for constant directional selection.  
+
+####<span style="color:#F0E442">lambda</span> 
+Lambda () is an additional parameter to the Brownian Motion model which estimates the linear transformation of the branch-lengths of the phylogeny that best reproduce the observed trait values.  The lambda parameter is often used as a measure of phylogenetic signal.  When $\lambda = 1$ the model predicts the same distribution of trait values as the Brownian Motion model.  When $\lambda = 0$ the trait value has no phylogenetic structure and is distributed randomly across the tree.  However, there are multiple evolutionary and ecological processes that could disrupt trait covariance among closely related species produce a departure from $\lambda = 1$.  Although it can't be used to infer the specific evolutionary processes at play, it can be used to distinguish traits which seem to be either phylogenetically conserved / undergoing gradual divergence via drift (strong phylogenetic signal) compared to those traits that appear to be more labile (weaker phylogenetic signal). $\lambda$ has been shown to be a robust statistical descriptor of phylogenetic signal under a range of trait evolution models (M?nkem?ller et al. (2012). Methods in Ecology and Evolution, 3, 743-756) and even when trees contain polytomies and are not accurately time-calibrated (Molina-Venegas, R. & Rodr?guez, M. (2017). BMC Evolutionary Biology, 17, 1-10).            
+
+####<span style="color:#0072B2">kappa</span>
+Kappa (Pagel 1999) is an alternative additional parameter to the Brownian Motion model, which raises all branch lengths to a power (non-linear).  This assumes that trait divergence depends on the number of speciation events between species and can be used to test whether evolution is punctuational (short periods of rapid evolution followed by longer periods of stasis in which no change occurs) or gradual (trait divergence accumulates steadily through time).  The value of kappa stretches or compresses individual phylogenetic branch lengths.  If $\kappa > 1$, then long branches are stretched more than shorter ones, indicating evolutionary rates accelerate in longer branches.  If $\kappa < 1$, longer branches are compressed more than shorter ones and evolunationary rates decelerate in longer branches.   When $\kappa = 0$, trait evolution is independent of branch lengths and observed patterns are consistent with punctuated equilibrium.  When $\kappa = 1$ the tree is untransformed and equivalent to the Brownian Motion model.    
+
+####<span style="color:#D55E00">delta</span>
+Delta is also an additional parameter to the Brownian Motion model which transforms the node depths of the tree, by raising them to a power.  The delta parameter can be interpreted as an estimate of the relative contribution of early versus late evolution to the covariance between observed trait values and is similar to the EB model in this respect.  A $\delta = 1$ indicates gradual evolution, as predicted under Brownian Motion. A $\delta < 1$ indicates temporally early trait evolution or 'early burst', indicative of an adaptive radiation. A $\delta > 1$ indicates trait evolution has accelerated more recently, indicative of species-specific adaptation. In theory, I guess we could use this parameter to explore whether there is evidence for very recent rapid increases in rates of trait evolution for any of the Phytophthora traits?  For example is $\delta$ especially high for traits that might facilitate transport to, establishment and spread in novel regions and the expansion of host range?             
+
+####<span style="color:#CC79A7">drift</span>
+The directional drift model is another variant of the Brownian Motion model, which assumes weak selection on the focal trait.  Here, the stregth and direction of selection varies randomly from one generation to the next.  Selection in each generation is drawn from a normal distribution with mean 0 and variance parameter estimated by the model. 
+
+####<span style="color:#999999">white</span>
+This is a white noise model, which assumes that trait values vary independently around some global mean, so phylogenetic history is completely irrelevant to observed trait values.  This equates to $\lambda = 0$, where the phylogeny is star-shaped.    
+
+These are all off-the-shelf methods for fitting phylogenetic trees in a unified framework that means we can compare model performance. The cost of this is that we don't have much flexibility in the types of models that we choose to compare.  There are other models of trait evolution focussing on different evolutionary processes (e.g. biotic interactions, see Clarke et al. 2017 Am. Nat., 189: 121-137) that we haven't tested.    
+
+###Visualise how the individual traits are distributed across the phylogeny and quantify their phylogenetic signal
+
+
+```{r}
+#Process the trait data for mapping on to a phylogeny
+  
+# this time read in the discrete trait data retaining the different NA values
+# all NAs referring to absent structures are now a character "NA", so these can be assigned white colouring in the figures.  This distiguishes them from the genuinely missing data (#N/A) coloured grey).
+traits_labels <-
+  read.csv("data/2018-01-29_Phytophthora_trait_database_merged.csv",
+           stringsAsFactors = FALSE,
+           na.strings = c("#N/A"))[, discrete_variables]
+# convert these absent structures to " ", so they don't show up on the legend
+for (i in 1:ncol(traits_labels)){
+  traits_labels[,i][traits_labels[,i] == "NA"] <- " "
+  #traits_labels[,i][is.na(traits_labels[i,])] <- as.character(NA)
+}
+
+
+
+traits_labels$species_name <- traits$species_name
+traits_labels$phylo_clade <- traits$phylo_clade
+
+# rename the trait values so the legends are labelled in full
+traits_labels$papillate <- 
+  revalue(traits_labels$papillate, 
+          c("NP" = "non-papillate",
+            "SP" = "semi-papillate",
+            "P" = "papillate"))
+
+traits_labels$proliferation <-
+  revalue(traits_labels$proliferation, 
+          c("NP" = " ",
+            "P" = "proliferation"))
+  
+traits_labels$sporangiophore <-
+  revalue(traits_labels$sporangiophore, 
+          c("SS" = "simple sympodial",
+            "CLS" = "closed sympodium",
+            "CS" = "compound sympodial",
+            "UN" = "unbranched",
+            "U" = "unbranched",
+            "DM" = "downy mildew shape",
+            "IB" = "irregularly branched"))
+
+traits_labels$caduceus <-
+  revalue(traits_labels$caduceus,
+          c("C" = "caducous",
+            "NC" = " "))
+
+traits_labels$pedicel_length <-
+  revalue(traits_labels$pedicel_length,
+          c("S" = "short (< 5)",
+            "M" = "medium (5 - 20)",
+            "L" = "long (> 20)"))
+
+traits_labels$chlamydospores <-
+  revalue(traits_labels$chlamydospores,
+          c("CH" = "chlamydospores formed",
+            "NCH" = " ")
+  )
+
+traits_labels$hyphal_swelling <-
+  revalue(traits_labels$hyphal_swelling,
+          c("HS" = "hyphal swellings formed (any shape)",
+            "NHS" = " ")
+  )
+
+traits_labels$oospores <-
+  revalue(traits_labels$oospores,
+          c("O" = "oospores formed",
+            "NO" = " ")
+  )
+
+traits_labels$ho_he_s <-
+  revalue(traits_labels$ho_he_s,
+          c("S" = "sterile (in culture)",
+            "HO" = "homothallic",
+            "HE" = "heterothallic",
+            "HE/HO" = "heterothallic/homothallic")
+  )
+
+traits_labels$oogonia_wall <-
+  revalue(traits_labels$oogonia_wall,
+          c("S" = "smooth",
+            "O" = "ornamented",
+            "W" = "wavy wall")
+  )
+
+traits_labels$tapering_base <-
+  revalue(traits_labels$tapering_base,
+          c("TB" = "tapering",
+            "NTB" = "non-tapering")
+  )
+
+# antheridial attachment
+traits_labels$amphi_para <-
+  revalue(traits_labels$amphi_para,
+          c(            "A" = "amphigynous",
+                        "P" = "paragynous",
+                        "B" = "both amphigynous and paragynous")
+  )
+
+# space between oospore and oogonial wall
+traits_labels$aplerotic_plerotic <-
+  revalue(traits_labels$aplerotic_plerotic,
+          c("P" = "plerotic (no space)",
+            "A" = "aplerotic",
+            "SA" = "slightly aplerotic",
+            "B" = "both plerotic and aplerotic")
+  )
+
+traits_labels$oospore_wall_cat <-
+  revalue(traits_labels$oospore_wall_cat,
+          c("L" = "low (< 0.30)",
+            "M" = "medium (0.30 - 0.49)",
+            "H" = "high (> 0.50)"))
+
+traits_labels$gr_at_opt_cat <-
+  revalue(traits_labels$gr_at_opt_cat,
+          c("S" = "slow (< 5)",
+            "M" = "medium (5 - 10)",
+            "F" = "fast (> 10)"))
+
+traits_labels$temp_profile <-
+  revalue(traits_labels$temp_profile,
+          c("L" = "low (optimum < 22.5)",
+            "M" = "medium (optimum 22.5 - 27.5)",
+            "H" = "high (optimum > 27.5)"))
+
+traits_labels$temp_range_cat <-
+  revalue(traits_labels$temp_range_cat,
+          c("N" = "narrow (< 20)",
+            "M" = "medium (21 - 27)",
+            "W" = "wide (> 27)"))
+
+
+# now add the continuous trait data
+traits_labels <- 
+  cbind(traits_labels, traits[,c("species_name", "phylo_clade", cont_variables)])
+
+# where oospores are absent: change oospore wall width and oospore wall index to 10% below the minimum value: this means species where the structure is absent will be coloured white by the colour scheme, while species with lowest trait values will have a bleached version of the fuller colour
+traits_labels$oospore_wall_index[traits_labels$ho_he_s == "S"] <- min(traits_labels$oospore_wall_index, na.rm = TRUE) - diff(range(traits_labels$oospore_wall_index, na.rm = TRUE))*0.1
+
+traits_labels$oospore_wall_thickness[traits_labels$ho_he_s == "S"] <- min(traits_labels$oospore_wall_thickness, na.rm = TRUE) - diff(range(traits_labels$oospore_wall_thickness, na.rm = TRUE))*0.1
+#For the other continuous variables without absent structures, we will later add a 10% buffer to the bottom value colourbar scale so the minimum value isn't assigned white colouring (avoiding confusion with absent structures)
+
+rownames(traits_labels) <- traits_labels$species_name # gheatmap needs rownames to recognise which tip labels the trait values belong to
+
+traits_pretty_labels <- c(setNames(c('paste("oospore wall thickness (", mu, "m)")',
+                                 "oospore~wall~index",
+                                 "growth~rate~at~optimum~temperature~(mm/day)",
+                                 'paste("minimum temperature for growth (", degree, "C)")',
+                                 'paste("optimum temperature for growth (", degree, "C)")',
+                                 'paste("maximum temperature for growth (", degree, "C)")',
+                                 "thermal~tolerance~range"),
+                               cont_variables),
+                               setNames(c("papillate",
+                                          "proliferation",
+                                          "sporangiophore~form",
+                                          "caducous",
+                                          'paste("pedicle length(", mu, "m)", n_equals[3],")")',
+                                          "chlamydospores",
+                                          "hyphal~swellings",
+                                          "oospores",
+                                          "reproductive~strategy",
+                                          "oogonial~wall",
+                                          "oogonial~base",
+                                          "antheridial~attachment",
+                                          "space~between~oospore~and~oogonial~wall",
+                                          "oospore~wall~index~category", 
+                                          'paste("growth rate at optimum temperature  category (", degree, "C)")',
+                                          'paste("temperature profile (", degree, "C)")',
+                                          "temperature~range~category"),
+                                        discrete_variables)
+)
+
+lambdas_all <- rbind(lambda_est_discrete, lambda_est_cont)
+lambdas <- setNames(lambdas_all$lambda, lambdas_all$trait) 
+prandom <- setNames(lambdas_all$prandom, lambdas_all$trait)
+pBM <- setNames(lambdas_all$pBM, lambdas_all$trait) 
+#kappas <- c(kappa_est_discrete, kappa_est_cont)
+
+# specify the trait groups to plot together
+
+temp_features <- c("gr_at_opt",  
+"gr_at_opt_cat",  
+"temp_min",  
+"temp_opt",  
+"temp_max",  
+"temp_profile",  
+"temp_range", 
+"temp_range_cat")
+
+sporangial_features <-
+  c("papillate",  
+"proliferation",  
+"sporangiophore",  
+"caduceus",  
+"pedicel_length")
+
+reproduction_survival_structures <- 
+  c("ho_he_s",  
+    "oospores",
+    "chlamydospores",
+    "hyphal_swelling")
+
+oospore_features <- c(
+"oospore_wall_thickness",  
+"oospore_wall_index",  
+"oospore_wall_cat",  
+"oogonia_wall",  
+"tapering_base",               
+"amphi_para",                  
+"aplerotic_plerotic")
+
+```
+
+```{r fig.height = 12, fig.width = 12, message = FALSE, error=FALSE}
+
+# to save space remove "P. " and use only species part of latin name
+#Phytoph_tree$tip.label <- gsub("P. ", "", Phytoph_tree$tip.label)
+
+# function to find the oldest most recent common ancestor for a group of species
+# use this to find the node that corresponds to each clade for labelling the phylogeny
+
+  oldest.mrca<-function(tree,tips){
+    H<-nodeHeights(tree)
+    X<-mrca(tree)
+    n<-length(tips)
+    nodes<-height<-vector(); k<-1
+    for(i in 1:(n-1)) for(j in (i+1):n){
+      nodes[k]<-X[tips[i],tips[j]]
+      height[k]<-H[match(nodes[k],tree$edge[,1]),1]
+      k<-k+1
+    }
+    z<-match(min(height),height)
+    return(nodes[z])
+  }
+  
+  clade_nodes <-
+    sapply(unique(traits[traits$species_name %in% Phytoph_tree$tip.label,"phylo_clade"]), 
+           function(i)
+             oldest.mrca(Phytoph_tree,
+                         traits[traits$species_name %in% Phytoph_tree$tip.label & traits$phylo_clade == i,"species_name"])
+           )
+
+
+
+# a function to map an individual trait on to the phylogeny with an appropriate legend
+plot_trait <- function(trait_data, trait, phy, clade_nodes, traits_pretty_labels){
+  # plot the basic phylogeny, allowing space to add the trait values between the tips and the tip labels
+  
+  gg <- ggtree(phy,
+               layout="circular",
+               branch.length="none") 
+  gg <- gg + geom_tiplab2(size=5, 
+                         color="black",
+                         hjust = 0,
+                         offset = 3)
+  # add annotations showing the clade groupings
+  for (i in 1:11){
+    gg <- gg+geom_cladelabel(clade_nodes[i],
+                             label = names(clade_nodes)[i],
+                             offset = 7,
+                             offset.text = 2)
+  }
+  
+  cbPalette <-
+  c(
+    "#E69F00",
+    "#56B4E9",
+    "#009E73",
+    "#F0E442",
+    "#0072B2",
+    "#D55E00",
+    "#CC79A7"
+  )
+  
+  if(trait %in% discrete_variables){
+  
+  # select the trait to plot
+  focal_trait <- data.frame(trait = trait_data[,trait],
+                            stringsAsFactors = FALSE,
+                            row.names = trait_data[,"species_name"])
+  focal_trait$trait <- factor(focal_trait$trait,
+                              levels = c(unique(grep("^ $", focal_trait$trait[!is.na(focal_trait$trait)], value = TRUE)),unique(grep("^ $", focal_trait$trait[!is.na(focal_trait$trait)], value = TRUE, invert = TRUE))))
+    # set the legend so that any absent traits are coloured white
+  # and any traits with unknown/unmeasured values are coloured grey
+  # and discrete trait values are assigned colours from cbPalette
+  
+ col_legend <- c(" " = "white",
+                setNames(c(cbPalette[1:length(unique(grep("^ $", focal_trait$trait[!is.na(focal_trait$trait)], invert = TRUE, value = TRUE)))]), as.list(unique(grep("^ $", focal_trait$trait[!is.na(focal_trait$trait)], invert = TRUE, value = TRUE)))))
+ 
+ col_legend <- col_legend[levels(focal_trait$trait)]
+ #focal_trait$trait <- as.character(focal_trait$trait)
+  return(gheatmap(gg, 
+           focal_trait,
+           width=0.1, colnames = FALSE) +
+      scale_fill_manual(values = col_legend,
+                        breaks = levels(focal_trait$trait),
+                        na.value = "#999999",
+                        name = parse(text = traits_pretty_labels[trait]), 
+                        guide = guide_legend(title.position = "top", direction = "horizontal")) + theme(legend.title = element_text(colour = "black", size = 14),
+                                                                                                                                                                                                          #legend.position = "top",
+                                                                              legend.position = c(0.5, 0.97),
+                                                                              legend.background = element_rect(fill = "transparent"),
+#legend.key.width =  unit(0.3, "in"),
+#legend.key.height =  unit(0.1, "in"),
+legend.text = element_text(size = 14),
+plot.title = element_text(hjust = 0.5, size = 14, vjust = -31),
+#plot.caption = element_text(hjust = 0.5, size = 14, vjust = -30, margin = margin(t = -120, b = 0)),
+legend.margin=margin(0,0,0,0),
+        legend.box.margin=margin(0,0,0,0),
+plot.margin=unit(c(-3,0,-3,0), "in"),
+panel.background = element_rect(fill = "transparent"),
+plot.background = element_rect(fill = "transparent"),
+panel.spacing = unit(c(0,0,0,0), "cm")
+) + labs(title = substitute(list(lambda == lmb, P[BM] == pBM, P[random] == prandom), list(lmb=sprintf("%.3f", round(lambdas[trait], 3)), pBM=sprintf("%.3f", round(pBM[trait], 3)), prandom = sprintf("%.3f", round(prandom[trait], 3)))))
+)
+  }
+
+  
+  if(trait %in% cont_variables){
+    # select the trait to plot
+    focal_trait <- data.frame(trait = trait_data[,trait],
+                            stringsAsFactors = FALSE,
+                            row.names = trait_data[,"species_name"])
+  
+  return(gheatmap(gg, focal_trait,
+                 colnames = FALSE,
+           width = 0.1
+           ) + scale_fill_gradient(name = parse(text = traits_pretty_labels[trait]), low = "white", high = cbPalette[1], na.value = "#999999", guide = guide_colorbar(title.position = "top", direction = "horizontal"))  + theme(legend.title = element_text(colour = "black", size = 14),
+                                                                                                                                                                                                          #legend.position = "top",
+                                                                              legend.position = c(0.5, 0.97),
+                                                                              legend.background = element_rect(fill = "transparent"),
+legend.key.width =  unit(0.75, "in"),
+legend.key.height =  unit(0.2, "in"),
+legend.title.align = 0.5,
+legend.text = element_text(size = 11),
+plot.title = element_text(hjust = 0.5, size = 14, vjust = -31),
+#plot.caption = element_text(hjust = 0.5, size = 14, vjust = -30, margin = margin(t = -120, b = 0)),
+legend.margin=margin(0,0,0,0),
+        legend.box.margin=margin(0,0,0,0),
+plot.margin=unit(c(-3,0,-3,0), "in"),
+panel.background = element_rect(fill = "transparent"),
+plot.background = element_rect(fill = "transparent"),
+panel.spacing = unit(c(0,0,0,0), "cm")
+) + labs(title = substitute(list(lambda == lmb, P[BM] == pBM, P[random] == prandom), list(lmb=sprintf("%.3f", round(lambdas[trait], 3)), pBM=sprintf("%.3f", round(pBM[trait], 3)), prandom = sprintf("%.3f", round(prandom[trait], 3)))))
+)
+  }
+
+}
+
+ # plot_trait(trait_data = traits_labels,
+ #            trait = sporangial_features[1],
+ #            phy = Phytoph_tree_short,
+ #            clade_nodes = clade_nodes,
+ #            traits_pretty_labels = traits_pretty_labels)
+
+```
+
+
+```{r fig.height = 60, fig.width=12, message=FALSE, error=FALSE}
+
+# give species three character shortened names to try and make them readable on the phylogeny plots
+
+first3 <- substr(gsub("'", "", gsub("x ", "x", gsub("P. ", "", Phytoph_tree$tip.label))), 1, 3)
+# rename duplicates
+names(first3) <- Phytoph_tree$tip.label
+first3[grep("pseudo", names(first3))] <- paste0("ps", substr(gsub("P. pseudo", "", names(first3[grep("pseudo", names(first3))])), 1,1 ))
+first3["P. capsici"] <- "cpi"
+first3["P. citrophthora"] <- "cip"
+first3["P. multivesiculata"] <- "muv"
+first3["P. pluvialis"] <- "pls"
+first3["P. castanetorum"] <- "cst"
+first3["P. quercina"] <- "quc"
+first3["P. pistaciae"] <- "ptc"
+first3["P. fragariaefolia"] <- "frf"
+first3["P. 'castitis'"] <- "csi"
+first3["P. 'parsley'"] <- "prs"
+first3["P. litoralis"] <- "lis"
+first3["P. 'paludosa'"] <- "pau"
+first3["P. megasperma"] <- "mgs"
+first3["P. pinifolia"] <- "pif"
+first3["P. lacustris"] <- "lcs"
+first3["P. intercalaris"] <- "itc"
+first3["P. gondwanensis"] <- "gwn"
+first3["P. parsiana"] <- "psn"
+first3["P. hydrogena"] <- "hyg"
+first3["P. aquimorbida"] <- "aqm"
+first3["P. captiosa"] <- "cpt"
+first3["P. constricta"] <- "cnt"
+first3["P. macrochlamydospora"] <- "mch"
+#which(duplicated(first3))
+
+
+Phytoph_tree_short <- Phytoph_tree
+Phytoph_tree_short$tip.label <- first3
+traits_labels$species_name <- first3[rownames(traits_labels)]
+
+
+sp_features <- 
+lapply(1:length(sporangial_features), 
+       function(i)
+         plot_trait(trait_data = traits_labels, trait = sporangial_features[i], phy = Phytoph_tree_short, clade_nodes = clade_nodes, traits_pretty_labels = traits_pretty_labels))
+#sp_features
+ ggarrange(plotlist = sp_features,
+           ncol = 1, nrow = length(sp_features),
+           labels = c("sporangial\n features", rep("", length(sp_features)-1)))
+
+ # # save 2 per page 
+ # pages <- ceiling(length(sp_features)/2)
+ # for (i in 1:pages){
+ #   pl <- ggarrange(plotlist = sp_features[((i*2)-1): (i*2)],
+ #           ncol = 1, nrow = 2,
+ #           labels = c("sporangial\n features", ""),
+ #           font.label = list(size = 16))
+ #    ggsave(pl,
+ #           filename = paste0("sporangial_features", i, ".tiff"),
+ #        height = 24,
+ #        width = 12,
+ #      units = "in",
+ #       dpi = 500)
+ # }
+ 
+
+
+```
+
+```{r fig.height = 96, fig.width=12, message=FALSE, error=FALSE}
+
+temperature_features <- 
+lapply(1:length(temp_features), 
+       function(i)
+         plot_trait(trait_data = traits_labels, trait = temp_features[i], phy = Phytoph_tree_short , clade_nodes = clade_nodes, traits_pretty_labels = traits_pretty_labels))
+
+ggarrange(plotlist = temperature_features,
+          ncol = 1, nrow = 8,
+          labels = c("temperature\n features", rep("", length(temperature_features)-1)),
+          hjust = 0)
+
+
+```
+
+```{r include=FALSE}
+
+ # 2 per page 
+ # pages <- ceiling(length(temperature_features)/2)
+ # for (i in 1:pages){
+ #   pl <- ggarrange(plotlist = temperature_features[((i*2)-1): (i*2)],
+ #           ncol = 1, nrow = 2,
+ #           labels = c("temperature\n features", ""),
+ #           font.label = list(size = 16))
+ #    ggsave(pl,
+ #           filename = paste0("temperature_features", i, ".tiff"),
+ #        height = 24,
+ #        width = 12,
+ #      units = "in",
+ #       dpi = 500)
+ # }
+ 
+```
+
+
+```{r fig.height = 48, fig.width=12, message=FALSE, error=FALSE}
+
+rep_features <- 
+lapply(1:length(reproduction_survival_structures), 
+       function(i)
+         plot_trait(trait_data = traits_labels, trait = reproduction_survival_structures[i], phy = Phytoph_tree_short, clade_nodes = clade_nodes, traits_pretty_labels = traits_pretty_labels))
+
+ggarrange(plotlist = rep_features,
+          ncol = 1, nrow = 4,
+          labels = "reproductive and\n survival structures",
+          hjust = 0)
+
+# pages <- ceiling(length(rep_features)/2)
+#  for (i in 1:pages){
+#    pl <- ggarrange(plotlist = rep_features[((i*2)-1): (i*2)],
+#            ncol = 1, nrow = 2,
+#            labels = c("reproductive and\n survival structures", ""),
+#            font.label = list(size = 16))
+#     ggsave(pl,
+#            filename = paste0("repro_surv_structures", i, ".tiff"),
+#         height = 24,
+#         width = 12,
+#       units = "in",
+#        dpi = 500)
+#  }
+
+
+```
+
+```{r fig.height = 84, fig.width=12, message=FALSE, error=FALSE}
+
+oosp_features <- 
+lapply(1:length(oospore_features), 
+       function(i)
+         plot_trait(trait_data = traits_labels, trait = oospore_features[i], phy = Phytoph_tree_short, clade_nodes = clade_nodes, traits_pretty_labels = traits_pretty_labels))
+
+ggarrange(plotlist = oosp_features,
+          ncol = 1, nrow = 7,
+          hjust = 0,
+          labels = c("oospore\n features", rep("", length(oosp_features)-1)))
+
+# pages <- ceiling(length(oosp_features)/2)
+#  for (i in 1:pages){
+#    pl <- ggarrange(plotlist = oosp_features[((i*2)-1): (i*2)],
+#            ncol = 1, nrow = 2,
+#            labels = c("oospore features", ""),
+#            font.label = list(size = 16))
+#     ggsave(pl,
+#            filename = paste0("oospore_features", i, ".tiff"),
+#         height = 24,
+#         width = 12,
+#       units = "in",
+#        dpi = 500)
+#  }
+
+```
+
+**Fig. 3** - Distribution of trait values for 177 Phytophthora species grouped by A) sporangial features, B) temperature features, C) reproductive and survival features and D) oospore features.  Grey regions indicate species for which trait data is unavailable. White regions indicate the focal structure is absent in that species.  The best-supported models of trait evolution were based on linear ($\lambda$) transformations of branch lengths within the phylogeny and were used to infer the strength of phylogenetic signal in traits, $\lambda$.  When $\lambda$ = 1, trait divergence is proportional to shared phylogenetic history (Brownian Motion). When $\lambda$ = 0 the trait value has no phylogenetic structure and is distributed randomly across the tree.  P values indicate whether the observed trait distribution was significantly different to that expected under Brownian motion (P~BM~) or a white noise model (P~random~).  
+
+###Partitioning trait variation within and between clades 
+
+Relative disparity is a way of measuring trait disparity contained within sub-clades as a proportion of that contained across the entire clade.  This can be mapped through time to explore the tempo of trait evolution. High levels of relative disparity indicate that sub-clades have independently evolved to have largely overlapping trait values across clades. If relative disparity is low relative to expectations under Brownian Motion then sub-clades have narrower and more distinct trait values.    
+For individual traits
+
+```{r message=FALSE, error=FALSE, warning=FALSE, fig.height=18, fig.width=12}
+
+traits_pretty_labels_no_units <- c(setNames(c("oospore wall thickness",
+                                 "oospore wall index",
+                                 "growth rate at optimum temperature",
+                                 "minimum temperature for growth",
+                                 "optimum temperature for growth",
+                                 "maximum temperature for growth",
+                                 "thermal  tolerance range"),
+                               cont_variables),
+                               setNames(c("papillate",
+                                          "proliferation",
+                                          "sporangiophore form",
+                                          "caducous",
+                                          "pedicle length",
+                                          "chlamydospores",
+                                          "hyphal swellings",
+                                          "oospores",
+                                          "reproductive strategy",
+                                          "oogonial wall",
+                                          "oogonial base",
+                                          "antheridial attachment",
+                                          "space between oospore and oogonial wall",
+                                          "oospore wall index category", 
+                                          "growth rate at optimum temperature category",
+                                          "temperature profile",
+                                          "temperature range category"),
+                                        discrete_variables)
+)
+
+
+source("modified_dtt_functions.R") # modified to allow discrete trait values
+
+cont_disparity <- list()
+cont_text <- list()
+for (i in 1:length(cont_variables)){
+
+  x <- modified_dtt(phy=Phytoph_tree, data = setNames(traits[!is.na(traits[,cont_variables[i]]),cont_variables[i]], traits[!is.na(traits[,cont_variables[i]]),"species_name"]), index = "avg.sq", nsim = 1000, plot = FALSE, calculateMDIp=TRUE, mdi.range = c(0, 1))
+  #names(x$times)[names(x$times) == ""] <- " "
+  env_test <- rank_env_dtt(x = x)
+  #sim_CI <- geiger:::.dtt.polygon(x$sim, x$times, alpha = 1 - 0.95)
+cont_disparity[[i]] <- data.frame(trait = traits_pretty_labels_no_units[cont_variables[i]],
+                                  times = env_test$r,
+                                  dtt = env_test$data_curve,
+                                  med_sim = env_test$central_curve,
+                                  lower_sim = env_test$lower,
+                                  upper_sim = env_test$upper)
+
+cont_text[[i]] <- data.frame(trait = traits_pretty_labels_no_units[cont_variables[i]],
+                             mdi = geiger:::.area.between.curves(env_test$r, env_test$central_curve, env_test$data_curve, c(0, 1)),
+                             p = env_test$p,
+                             x_pos = 0,
+                             y_pos = max(unlist(cont_disparity[[i]][,c("dtt", "upper_sim")])))
+}
+
+cont_disparity <- do.call(rbind, cont_disparity)
+cont_text <- do.call(rbind, cont_text)
+  
+
+
+```
+
+```{r}
+lenUnique <- function(x){length(unique(x[!is.na(x)]))}
+binary_variables <- names(which(apply(traits[,discrete_variables], 2, lenUnique) == 2))
+```
+
+```{r message=FALSE, warning=FALSE}
+
+
+
+
+
+discrete_disparity <- list()
+discrete_text <- list()
+# exclude pedicel length, as there are too many missing values
+for (i in match(grep("pedicel", setdiff(discrete_variables, binary_variables), value = TRUE, invert = TRUE),
+                discrete_variables)){
+
+  get_dtt <- 
+  modified_dtt(phy = Phytoph_tree, data = setNames(traits[!is.na(traits[,discrete_variables[i]]),discrete_variables[i]], traits[!is.na(traits[,discrete_variables[i]]),"species_name"]),
+             index = "discrete", 
+             nsim = 1000, 
+             plot = FALSE, 
+             calculateMDIp=FALSE)
+  #names(get_dtt$times)[names(get_dtt$times) == ""] <- " "
+  #sim_CI <- geiger:::.dtt.polygon(get_dtt$sim, get_dtt$times, alpha = 1 - 0.95)
+  env_test <- rank_env_dtt(x = get_dtt)
+discrete_disparity[[i]] <- data.frame(trait = traits_pretty_labels_no_units[discrete_variables[i]],
+                                  times = env_test$r,
+                                  dtt = env_test$data_curve,
+                                  med_sim = env_test$central_curve,
+                                  lower_sim = env_test$lower,
+                                  upper_sim = env_test$upper)
+
+discrete_text[[i]] <- data.frame(trait = traits_pretty_labels_no_units[discrete_variables[i]],
+                             mdi = geiger:::.area.between.curves(env_test$r, env_test$central_curve, env_test$data_curve, c(0, 1)),
+                             p = env_test$p,
+                             x_pos = 0,
+                             y_pos = max(unlist(discrete_disparity[[i]][,c("dtt", "upper_sim")])))
+}
+
+discrete_disparity <- do.call(rbind, discrete_disparity)
+discrete_text <- do.call(rbind, discrete_text)
+
+binary_disparity <- list()
+binary_text <- list()
+# exclude pedicel length, as there are too many missing values
+for (i in match(binary_variables, discrete_variables)){
+
+  get_dtt <- 
+  modified_dtt(phy = Phytoph_tree, data = setNames(traits[!is.na(traits[,discrete_variables[i]]),discrete_variables[i]], traits[!is.na(traits[,discrete_variables[i]]),"species_name"]),
+             index = "binary", 
+             nsim = 1000, 
+             plot = FALSE, 
+             calculateMDIp=FALSE)
+  #names(get_dtt$times)[names(get_dtt$times) == ""] <- " "
+  #sim_CI <- geiger:::.dtt.polygon(get_dtt$sim, get_dtt$times, alpha = 1 - 0.95)
+  env_test <- rank_env_dtt(x = get_dtt)
+binary_disparity[[i]] <- data.frame(trait = traits_pretty_labels_no_units[discrete_variables[i]],
+                                  times = env_test$r,
+                                  dtt = env_test$data_curve,
+                                  med_sim = env_test$central_curve,
+                                  lower_sim = env_test$lower,
+                                  upper_sim = env_test$upper)
+
+binary_text[[i]] <- data.frame(trait = traits_pretty_labels_no_units[discrete_variables[i]],
+                             mdi = geiger:::.area.between.curves(env_test$r, env_test$central_curve, env_test$data_curve, c(0, 1)),
+                             p = env_test$p,
+                             x_pos = 0,
+                             y_pos = max(unlist(binary_disparity[[i]][,c("dtt", "upper_sim")])))
+}
+
+binary_disparity <- do.call(rbind, binary_disparity)
+binary_text <- do.call(rbind, binary_text)
+```
+
+```{r}
+
+
+
+plot_disparity <- function(trait_subset, text_subset){
+  gg <- ggplot()
+  gg1 <- gg + geom_line(data = trait_subset, 
+                        aes(x = times,
+                            y = dtt),
+                        linetype = 1)
+  gg2 <- gg1 + geom_line(data = trait_subset,
+                         aes(x = times,
+                             y = med_sim),
+                         linetype = 2)
+  gg3 <- gg2 + geom_ribbon(data = trait_subset,
+                           aes(x = times,
+                               ymin = lower_sim,
+                               ymax = upper_sim),
+                           alpha = 0.3)
+  gg4 <- gg3+ facet_wrap(~trait,
+                         labeller = label_wrap_gen(),
+                         ncol = 4,
+                         scales = "free_y",
+                         strip.position = "right")
+  gg5 <- gg4 + scale_y_continuous(name = "average sub-clade disparity") 
+  gg6 <- gg5 + scale_x_continuous(name = "relative time",
+                                                                                            
+                                                                                              limits = c(0,1),
+                                                                                              breaks = c((0:5*2)/10),
+                                  sec.axis = sec_axis(name = "approx mya", ~ 1 - . * 34))
+  
+  gg6 <- gg6 + theme_bw() + theme(panel.grid = element_blank(),
+                                  text = element_text(size = 12),
+                      axis.text = element_text(size = 12),
+                      strip.text = element_text(size = 12),
+                      axis.title = element_text(size = 12),
+                     plot.margin = unit(c(3,3,3,3), "lines"))
+  gg7 <- gg6 + geom_text(data = text_subset,
+                         aes(x = x_pos,
+                             y = y_pos,
+                             label = paste("MDI = ", sprintf("%.3f", round(mdi, 3)), ", P = ", sprintf("%.3f", round(p, 3)))),
+                         #size = 6,
+                         hjust = 0
+                          ) 
+  #gg8 <- gg7 + geom_vline(xintercept = 0.25, col = "grey50")
+  #gg9 <- gg7 + geom_vline(xintercept = 0.75,  col = "grey50")
+  #labels = waiver())
+  return(gg7)
+}
+
+
+```
+
+```{r }
+
+
+
+disparity <- rbind(discrete_disparity,
+                   binary_disparity,
+                   cont_disparity)
+
+disparity <- merge(disparity,
+                   data.frame(trait_raw = names(traits_pretty_labels_no_units), trait = traits_pretty_labels_no_units, row.names = NULL,
+                              stringsAsFactors = FALSE))
+
+text <- rbind(cont_text,
+              discrete_text,
+              binary_text)
+text$trait_raw <- rownames(text)
+
+
+
+```
+
+```{r warning=FALSE, message=FALSE, fig.height=20, fig.width = 16}
+
+
+
+A <- plot_disparity(trait_subset = disparity[disparity$trait_raw %in% sporangial_features,], text_subset = text[text$trait_raw %in% sporangial_features,]) # 2 rows
+
+B <- plot_disparity(trait_subset = disparity[disparity$trait_raw %in% temp_features,], text_subset = text[text$trait_raw %in% temp_features,]) # 4 rows
+
+C_repro <- plot_disparity(trait_subset = disparity[disparity$trait_raw %in% reproduction_survival_structures,], text_subset = text[text$trait_raw %in% reproduction_survival_structures,]) # 2 rows
+
+D <- plot_disparity(trait_subset = disparity[disparity$trait_raw %in% oospore_features,], text_subset = text[text$trait_raw %in% oospore_features,]) # 4 rows
+
+ggarrange(A, B, C_repro, D,
+          ncol = 1, 
+          nrow = 4, 
+          labels = c("A - sporangial features",
+                     "B - temperature features",
+                     "C - reproductive and survival structures",
+                     "D - oospore features"),
+          heights = c(1.3,2,1.3,2),
+          hjust = 0)
+
+ # ggsave("disparity_all.tiff",
+ #        height = 20,
+ #        width = 12,
+ #        units = "in",
+ #        dpi = 500)
+# plot_disparity(trait_subset = disparity[disparity$trait_raw %in% temp_features,], text_subset = text[text$trait_raw %in% temp_features,])
+
+```
+**Fig. 4** *Phytophthora* trait disparity through time (temporal patterns in trait diversification) for all traits grouped by A) sporangial features, B) temperature features, C) reproductive and survival structures and D) oospore features. Relative time describes the node height in phylogenetic history from root (0) to tip (1). Solid black lines are empirical trait disparity. Dashed black lines indicate the expected mean disparity under Brownian Motion (a null model). The grey shaded area represents 95% confidence intervals for 1000 simulations under the null model. Where solid black lines fall outside of the grey shaded region, disparity is significantly different from null model expectations. The morphological disparity index (MDI) is the area between the empirical and the mean expected disparity curves. MDI is a summary statistic for comparing the disparity through time curves for different traits with significance determined using a global envelope test. Higher MDI indicates more labile traits. 
+```{r warning=FALSE, message=FALSE, fig.height=18, fig.width = 12}
+
+traits_units <- c(setNames(c('paste(mu, "m")',
+                                 "",
+                                 "mm/day",
+                                 'paste(degree, "C")',
+                                 'paste(degree, "C"',
+                                 'paste(degree, "C")',
+                                 ""),
+                               cont_variables),
+                               setNames(c("",
+                                          "",
+                                          "",
+                                          "",
+                                          "",
+                                          "",
+                                          "",
+                                          "",
+                                          "",
+                                          "",
+                                          "",
+                                          "",
+                                          "",
+                                          "", 
+                                          "",
+                                          "",
+                                          ""),
+                                        discrete_variables)
+)
+
+plot_trait <- function(trait_data, trait, phy, clade_nodes, traits_pretty_labels){
+  # plot the basic phylogeny, allowing space to add the trait values between the tips and the tip labels
+  
+  gg <- ggtree(phy,
+               layout="circular",
+               branch.length="none") 
+  gg <- gg + geom_tiplab2(size=5, 
+                         color="black",
+                         hjust = 0,
+                         offset = 3)
+  # add annotations showing the clade groupings
+  for (i in 1:11){
+    gg <- gg+geom_cladelabel(clade_nodes[i],
+                             label = names(clade_nodes)[i],
+                             offset = 5.5,
+                             offset.text = 2,
+                             fontsize = 6)
+  }
+  
+  cbPalette <-
+  c(
+    "#E69F00",
+    "#56B4E9",
+    "#009E73",
+    "#F0E442",
+    "#0072B2",
+    "#D55E00",
+    "#CC79A7"
+  )
+  
+  if(trait %in% discrete_variables){
+  
+  # select the trait to plot
+  focal_trait <- data.frame(trait = trait_data[,trait],
+                            stringsAsFactors = FALSE,
+                            row.names = trait_data[,"species_name"])
+  focal_trait$trait <- factor(focal_trait$trait,
+                              levels = c(unique(grep("^ $", focal_trait$trait[!is.na(focal_trait$trait)], value = TRUE)),unique(grep("^ $", focal_trait$trait[!is.na(focal_trait$trait)], value = TRUE, invert = TRUE))))
+    # set the legend so that any absent traits are coloured white
+  # and any traits with unknown/unmeasured values are coloured grey
+  # and discrete trait values are assigned colours from cbPalette
+  
+ col_legend <- c(" " = "white",
+                setNames(c(cbPalette[1:length(unique(grep("^ $", focal_trait$trait[!is.na(focal_trait$trait)], invert = TRUE, value = TRUE)))]), as.list(unique(grep("^ $", focal_trait$trait[!is.na(focal_trait$trait)], invert = TRUE, value = TRUE)))))
+ 
+ col_legend <- col_legend[levels(focal_trait$trait)]
+ #focal_trait$trait <- as.character(focal_trait$trait)
+  return(gheatmap(gg, 
+           focal_trait,
+           width=0.1, colnames = FALSE) +
+      scale_fill_manual(values = col_legend,
+                        breaks = levels(focal_trait$trait),
+                        na.value = "#999999",
+                        name = "", 
+                        guide = guide_legend(title.position = "top", direction = "horizontal")) + theme(legend.title = element_text(colour = "black", size = 1),
+                                                                                                                                                                                                          #legend.position = "top",
+                                                                              legend.position = c(0.5, 0.97),
+                                                                              legend.background = element_rect(fill = "transparent"),
+#legend.key.width =  unit(0.85, "in"),
+legend.key.height =  unit(0.5, "in"),
+legend.text = element_text(size = 22),
+legend.spacing.x = unit(0.2, 'in'),
+plot.title = element_text(hjust = 0.5, size = 22, vjust = -31),
+#plot.caption = element_text(hjust = 0.5, size = 14, vjust = -30, margin = margin(t = -120, b = 0)),
+legend.margin=margin(0,0,0,0),
+        legend.box.margin=margin(0,0,0,0),
+plot.margin=unit(c(-3,0,-3,0), "in"),
+panel.background = element_rect(fill = "transparent"),
+plot.background = element_rect(fill = "transparent"),
+panel.spacing = unit(c(0,0,0,0), "cm")
+) + labs(title = substitute(list(lambda == lmb, P[BM] == pBM, P[random] == prandom), list(lmb=sprintf("%.3f", round(lambdas[trait], 3)), pBM=sprintf("%.3f", round(pBM[trait], 3)), prandom = sprintf("%.3f", round(prandom[trait], 3)))))
+)
+  }
+
+  
+  if(trait %in% cont_variables){
+    # select the trait to plot
+    focal_trait <- data.frame(trait = trait_data[,trait],
+                            stringsAsFactors = FALSE,
+                            row.names = trait_data[,"species_name"])
+  
+  return(gheatmap(gg, focal_trait,
+                 colnames = FALSE,
+           width = 0.1
+           ) + scale_fill_gradient(name = parse(text = traits_units[trait]), low = "white", high = cbPalette[1], na.value = "#999999", guide = guide_colorbar(title.position = "right", direction = "horizontal", label.position = "top"))  + theme(legend.title = element_text(colour = "black", size = 22),
+                                                                                                                                                                                                          #legend.position = "top",
+                                                                              legend.position = c(0.5, 0.97),
+                          
+                                                                              legend.background = element_rect(fill = "transparent"),
+legend.key.width =  unit(1, "in"),
+legend.key.height =  unit(0.3, "in"),
+legend.title.align = 1,
+legend.text = element_text(size = 18),
+plot.title = element_text(hjust = 0.5, size = 22, vjust = -32),
+#plot.caption = element_text(hjust = 0.5, size = 14, vjust = -30, margin = margin(t = -120, b = 0)),
+legend.margin=margin(1,0,0,0),
+        legend.box.margin=margin(1,0,0,0),
+plot.margin=unit(c(-3,0,-3,0), "in"),
+panel.background = element_rect(fill = "transparent"),
+plot.background = element_rect(fill = "transparent"),
+panel.spacing = unit(c(0,0,0,0), "cm")
+) + labs(title = substitute(list(lambda == lmb, P[BM] == pBM, P[random] == prandom), list(lmb=sprintf("%.3f", round(lambdas[trait], 3)), pBM=sprintf("%.3f", round(pBM[trait], 3)), prandom = sprintf("%.3f", round(prandom[trait], 3)))))
+
+) 
+  }
+
+}
+
+plot_disparity <- function(trait_subset, text_subset){
+  gg <- ggplot()
+  gg1 <- gg + geom_line(data = trait_subset, 
+                        aes(x = times,
+                            y = dtt),
+                        linetype = 1)
+  gg2 <- gg1 + geom_line(data = trait_subset,
+                         aes(x = times,
+                             y = med_sim),
+                         linetype = 2)
+  gg3 <- gg2 + geom_ribbon(data = trait_subset,
+                           aes(x = times,
+                               ymin = lower_sim,
+                               ymax = upper_sim),
+                           alpha = 0.3)
+  gg5 <- gg3 + scale_y_continuous(name = "average sub-clade disparity") 
+  gg6 <- gg5 + scale_x_continuous(name = "relative time",
+                                                                                            
+                                                                                              limits = c(0,1),
+                                                                                              breaks = c((0:5*2)/10)#,
+                                  #sec.axis = sec_axis(name = "approx mya", ~ 1 - . * 34)
+                                  )
+  
+  gg6 <- gg6 + theme_bw() + theme(panel.grid = element_blank(),
+                                  text = element_text(size = 18),
+                      axis.text = element_text(size = 18),
+                      strip.text = element_text(size = 18),
+                      axis.title = element_text(size = 18),
+                     plot.margin = unit(c(3,5,3,8), "lines"))
+  gg7 <- gg6 + geom_text(data = text_subset,
+                         aes(x = x_pos,
+                             y = y_pos,
+                             label = paste("MDI = ", sprintf("%.3f", round(mdi, 3)), ", P = ", sprintf("%.3f", round(p, 3)))),
+                         size = 6,
+                         hjust = 0
+                          ) #+ ggtitle(label = parse(text = traits_pretty_labels[text_subset$trait_raw]))
+  #gg8 <- gg7 + geom_vline(xintercept = 0.25, col = "grey50")
+  #gg9 <- gg7 + geom_vline(xintercept = 0.75,  col = "grey50")
+  #labels = waiver())
+  return(gg7)
+}
+
+disparity_sporangial <- plot_disparity(trait_subset = disparity[disparity$trait_raw %in% text[sporangial_features,][which.max(text[sporangial_features, "mdi"]), "trait_raw"],], text_subset = text[text$trait_raw %in% text[sporangial_features,][which.max(text[sporangial_features, "mdi"]), "trait_raw"],])
+
+phylo_sporangial <- plot_trait(trait_data = traits_labels, trait = text[sporangial_features,][which.max(text[sporangial_features, "mdi"]), "trait_raw"], phy = Phytoph_tree_short, clade_nodes = clade_nodes, traits_pretty_labels = traits_pretty_labels) 
+
+disparity_oospore <- plot_disparity(trait_subset = disparity[disparity$trait_raw %in% text[oospore_features,][which.max(text[oospore_features, "mdi"]), "trait_raw"],], text_subset = text[text$trait_raw %in% text[oospore_features,][which.max(text[oospore_features, "mdi"]), "trait_raw"],])
+
+phylo_oospore <- plot_trait(trait_data = traits_labels, trait = text[oospore_features,][which.max(text[oospore_features, "mdi"]), "trait_raw"], phy = Phytoph_tree_short, clade_nodes = clade_nodes, traits_pretty_labels = traits_pretty_labels) 
+
+disparity_temperature <- plot_disparity(trait_subset = disparity[disparity$trait_raw %in% text[temp_features,][which.max(text[temp_features, "mdi"]), "trait_raw"],], text_subset = text[text$trait_raw %in% text[temp_features,][which.max(text[temp_features, "mdi"]), "trait_raw"],])
+
+phylo_temperature <- plot_trait(trait_data = traits_labels, trait = text[temp_features,][which.max(text[temp_features, "mdi"]), "trait_raw"], phy = Phytoph_tree_short, clade_nodes = clade_nodes, traits_pretty_labels = traits_pretty_labels) 
+
+disparity_surv <- plot_disparity(trait_subset = disparity[disparity$trait_raw %in% text[reproduction_survival_structures,][which.max(text[reproduction_survival_structures, "mdi"]), "trait_raw"],], text_subset = text[text$trait_raw %in% text[reproduction_survival_structures,][which.max(text[reproduction_survival_structures, "mdi"]), "trait_raw"],])
+
+phylo_surv <- plot_trait(trait_data = traits_labels, trait = text[reproduction_survival_structures,][which.max(text[reproduction_survival_structures, "mdi"]), "trait_raw"], phy = Phytoph_tree_short, clade_nodes = clade_nodes, traits_pretty_labels = traits_pretty_labels) 
+```
+
+
+
+```{r warning=FALSE, message=FALSE,  fig.height=64, fig.width = 12}
+
+
+ggarrange(
+ggarrange(NULL,
+  disparity_sporangial,
+  NULL,
+          labels = "", 
+          ncol = 3,
+          nrow = 1,
+          widths = c(0.5, 2, 0.5)),
+          phylo_sporangial,
+ggarrange(NULL,
+  disparity_temperature,
+  NULL,
+          labels = "", 
+          ncol = 3,
+          nrow = 1,
+          widths = c(0.3, 2, 0.5)),
+phylo_temperature,
+ggarrange(NULL,
+  disparity_surv,
+  NULL,
+          labels = "", 
+          ncol = 3,
+          nrow = 1,
+          widths = c(0.3, 2, 0.5)),
+phylo_surv,
+ggarrange(NULL,
+  disparity_oospore,
+  NULL,
+          labels = "", 
+          ncol = 3,
+          nrow = 1,
+          widths = c(0.3, 2, 0.5)),
+phylo_oospore,
+          ncol = 1, 
+          nrow = 8, 
+          labels = c("A", "", "B", "", "C", "", "D", ""),
+          hjust = 0,
+          font.label = list(size = 28),
+          heights = c(0.9,1.8,0.9,1.8, 0.9,1.8,0.9,1.8))
+
+
+
+# ggsave(ggarrange(
+# ggarrange(NULL,
+#   disparity_sporangial,
+#   NULL,
+#           labels = "", 
+#           ncol = 3,
+#           nrow = 1,
+#           widths = c(0.3, 2, 0.5),
+#   font.label = list(size = 28)),
+#           phylo_sporangial,
+#           ncol = 1,
+#           nrow = 2,
+#           labels = c(paste("A", as.character(disparity[disparity$trait_raw %in% text[sporangial_features,][which.max(text[sporangial_features, "mdi"]), "trait_raw"],"trait"][1]), collapse = " "), ""),
+#           hjust = 0,
+#           font.label = list(size = 24),
+#           heights = c(0.9,1.8)),
+#        filename =  "Fig4A_disparity_sporangia.tiff",
+#        height = 16,
+#        width = 12,
+#        units = "in",
+#        dpi = 500)
+# 
+# ggsave(ggarrange(
+# ggarrange(NULL,
+#   disparity_temperature ,
+#   NULL,
+#           labels = "", 
+#           ncol = 3,
+#           nrow = 1,
+#           widths = c(0.3, 2, 0.5),
+#   font.label = list(size = 28)),
+#           phylo_temperature,
+#           ncol = 1,
+#           nrow = 2,
+#           labels = c(paste0("B ", as.character(disparity[disparity$trait_raw %in% text[temp_features ,][which.max(text[temp_features, "mdi"]), "trait_raw"],"trait"][1])),""),
+#           hjust = 0,
+#           font.label = list(size = 28),
+#           heights = c(0.9,1.8)),
+#        filename =  "Fig4B_disparity_temp.tiff",
+#        height = 16,
+#        width = 12,
+#        units = "in",
+#        dpi = 500)
+# 
+# ggsave(ggarrange(
+# ggarrange(NULL,
+#   disparity_surv ,
+#   NULL,
+#           labels = "", 
+#           ncol = 3,
+#           nrow = 1,
+#           widths = c(0.3, 2, 0.5),
+#   font.label = list(size = 28)),
+#           phylo_surv ,
+#           ncol = 1,
+#           nrow = 2,
+#           labels = c( paste0("C ", as.character(disparity[disparity$trait_raw %in% text[reproduction_survival_structures ,][which.max(text[reproduction_survival_structures, "mdi"]), "trait_raw"],"trait"][1])), ""),
+#           hjust = 0,
+#           font.label = list(size = 28),
+#           heights = c(0.9,1.8)),
+#        filename =  "Fig4C_disparity_surv.tiff",
+#        height = 16,
+#        width = 12,
+#        units = "in",
+#        dpi = 500)
+# 
+# ggsave(ggarrange(
+# ggarrange(NULL,
+#   disparity_oospore ,
+#   NULL,
+#           labels = "", 
+#           ncol = 3,
+#           nrow = 1,
+#           widths = c(0.3, 2, 0.5),
+#   font.label = list(size = 28)),
+#           phylo_oospore ,
+#           ncol = 1,
+#           nrow = 2,
+#           labels = c(paste0("D ", as.character(disparity[disparity$trait_raw %in% text[oospore_features ,][which.max(text[oospore_features, "mdi"]), "trait_raw"],"trait"][1])), ""),
+#           hjust = 0,
+#           font.label = list(size = 28),
+#           heights = c(0.9,1.8)),
+#        filename =  "Fig4D_disparity_oospore.tiff",
+#        height = 16,
+#        width = 12,
+#        units = "in",
+#        dpi = 500)
+
+
+
+```          
+          
+
+
+**Fig. 5** The most labile *Phytophthora* sporangial feature (A), temperature feature (B), reproduction and survival structure (C) and oospore feature (D) based on trait disparity through time (temporal patterns in trait diversification) and phylogenetic signal (??) using an ITS-only phylogeny. Relative time describes the node height in phylogenetic history from root (0) to tip (1). Solid black lines are empirical trait disparity. Dashed black lines indicate the expected mean disparity under Brownian Motion (a null model). The grey shaded area represents 95% confidence intervals for 1000 simulations under the null model. Where solid black lines fall outside of the grey shaded region, disparity is significantly different from null model expectations. The morphological disparity index (MDI) is the area between the empirical and the mean expected disparity curves. MDI is a summary statistic for comparing the disparity through time curves for different traits with significance determined using a global envelope test. Higher MDI indicates more labile traits. The trait values for all 179 species (see below for abbreviated species names) mapped on to the ITS phylogeny showing the 11 recognised Phytophthora clades.See below for abbreviated species names.     
+
+
+**Table 1** Abbreviated species names in Fig. 5
+```{r}
+
+abb <- first3[order(first3)]
+
+
+kable(data.frame(species_name = names(abb),
+                 abbreviation = abb),
+      col.names = c("species name", "abbreviation"),
+      row.names = FALSE) %>% 
+  kable_styling(full_width = FALSE, bootstrap_options = c("condensed"))
+
+```
+
+##Trait covariance across species using latent variable models
+
+Latent variable models allow ordination of species in trait-space using a multivariate glm approach.  This helps to cope with mixed trait variables (continuous, binary, discrete) as we can specify different error structures for different traits, preserve the mean-variance relationships for differently distributed traits.  Compared to distance based approaches usually applied in ordination, this should improve the power to detect important axes of trait-space.  We can also make use of model diagnostics based on residuals to ensure the fit of the model is acceptable and to quantify deviance explained.   The estimated latent variables can be interpreted as unobserved variables and, in theory, as the ecological strategies underpinning observed patterns of trait covariance, like the axes of a PCA axes.   
+
+```{r}
+
+# for the purposes of assessing trait covariance, we are going to model all discrete traits as binary dummy variables
+
+traits_discrete <- traits[, setdiff(discrete_variables, binary_variables)]
+traits_discrete[] <- lapply(traits_discrete, factor)
+
+na.keep <- function(x){x}
+
+dummy_discrete <-
+  model.matrix(~.,
+               model.frame(~.,
+                           traits_discrete,na.action=function(x)x),
+               contrasts.arg = lapply(traits_discrete, contrasts, contrasts = FALSE)
+               )[,-1]
+
+convert_binary <- function(x){
+  as.numeric(ifelse(is.na(x), NA, !grepl("^N", x)))
+}
+
+
+
+traits_for_boral <- data.frame(traits[,cont_variables],
+                               apply(traits[,binary_variables], 2, convert_binary),
+                               dummy_discrete)
+
+
+
+# let's remove the categorical variables that are derived from continuous variables
+traits_for_boral[which(traits_for_boral$`ho_he_sHE.HO` == 1),c("ho_he_sHO", "ho_he_sHE")] <- 1
+traits_for_boral$`ho_he_sHE.HO` <- NULL
+traits_for_boral[,grep("pedicel_length",
+                       colnames(traits_for_boral))] <- NULL
+traits_for_boral <- traits_for_boral[grep("cat|profile", colnames(traits_for_boral), value = TRUE, invert = TRUE)]
+rownames(traits_for_boral) <- traits$species_name
+
+
+```
+
+
+```{r}
+
+fit_LVmodel <- boral(y = traits_for_boral,
+                     family = ifelse(colnames(traits_for_boral) %in% cont_variables, 
+                                     yes = "normal", 
+                                     no = "binomial"),
+                     lv.control = list(num.lv = 2),
+                     save.model = TRUE)
+
+#save(fit_LVmodel, file="fit_LVmodel.rData")
+
+
+
+```
+```{r plot_LVs , fig.height=10, fig.width=12, message=FALSE}
+ #load("fit_LVmodel.rData")
+
+lv_coefs <- data.frame(fit_LVmodel$lv.coefs.median[,c("theta1", "theta2")])
+
+nudge_labels <- 
+function (X, Y, offset = 0.1) 
+{
+    posXposY <- ((X >= 0) & ((Y >= 0)))
+    posXnegY <- ((X >= 0) & ((Y < 0)))
+    negXposY <- ((X < 0) & ((Y >= 0)))
+    negXnegY <- ((X < 0) & ((Y < 0)))
+   adjX <- X 
+   adjY <- Y
+   adjX[posXposY] <-  + offset
+   adjY[posXposY] <-  + offset
+   
+   adjX[posXnegY] <-  + offset
+   adjY[posXnegY] <-  - offset
+    
+   adjX[negXposY] <-  - offset 
+   adjY[negXposY] <-  + offset
+   
+   adjX[negXnegY] <-  - offset
+   adjY[negXnegY] <-  - offset
+   
+   return(list(X_adj = adjX, Y_adj = adjY))
+} 
+
+justify_labels <- 
+function (X, Y) 
+{
+    posXposY <- ((X >= 0) & ((Y >= 0)))
+    posXnegY <- ((X >= 0) & ((Y < 0)))
+    negXposY <- ((X < 0) & ((Y >= 0)))
+    negXnegY <- ((X < 0) & ((Y < 0)))
+   adjX <- X 
+   adjY <- Y
+   adjX[posXposY] <- 1
+   adjY[posXposY] <- 1
+   
+   adjX[posXnegY] <- 1
+   adjY[posXnegY] <- 0
+    
+   adjX[negXposY] <- 0 
+   adjY[negXposY] <- 1
+   
+   adjX[negXnegY] <- 0
+   adjY[negXnegY] <- 0
+   
+   return(list(X_adj = adjX, Y_adj = adjY))
+} 
+ 
+    nLVs <- 2
+    
+    mcmc.samps <- mcmc(fit_LVmodel$jags.model$BUGSoutput$sims.matrix, 
+                       start = 1, 
+                       thin = fit_LVmodel$jags.model$BUGSoutput$n.thin)
+    hpdintervals <- HPDinterval(mcmc.samps)
+    params.est <- colMeans(mcmc.samps)
+    
+   # avoid plotting lvsplot to html report 
+   plot.invisible <- function(fit_LVmodel){
+      ff <- tempfile()
+      png(filename=ff)
+      x <-lvsplot(fit_LVmodel,
+                return.vals = TRUE,
+                alpha = 0.6,
+                jitter = TRUE)
+      dev.off()
+      unlink(ff)
+      x
+   }
+   
+  biplot_coords <- plot.invisible(fit_LVmodel)
+
+  scaled.lvs <- as.data.frame(biplot_coords$scaled.lvs)
+  colnames(scaled.lvs) <- c("LV1", "LV2")
+  scaled.lv.coefs <- as.data.frame(biplot_coords$scaled.lv.coefs)
+  colnames(scaled.lv.coefs) <- c("LV1", "LV2")
+  rownames(scaled.lv.coefs) <- rownames(fit_LVmodel$lv.coefs.median)
+  
+  
+
+  for(i in 1:nLVs){
+    lv <- as.matrix(as.data.frame(fit_LVmodel$lv.coefs.median))[,paste0("theta", 
+                                   i)]
+    lv_all <- as.matrix(as.data.frame(fit_LVmodel$lv.coefs.median)[,paste0("theta", 
+                                       1:nLVs)])
+    v <- sum(diag(lv%*%t(lv))) 
+    v_all <- sum(diag(lv_all%*%t(lv_all))) 
+    assign(paste0("v", i),
+           round((v/v_all)*100, 2))
+    #print(paste0("LV", i, " covariance = ", round((v/v_all)*100, 2), "%"))
+    
+  }
+  
+  # choose the latent variables to plot
+  x_var <- "LV1"
+  y_var <- "LV2"
+  
+  
+  # thin species by loadings: 30 most important
+  #n_spp <- 179
+  #ind_spp <- order(rowSums(x$scaled.lvs^2), decreasing = TRUE)[1:n_spp]
+  species_coordinates <-
+    as.data.frame(unclass(
+      data.frame(
+        Species = traits$species_name,
+        x_var = #traits_complete[,x_var],
+          scaled.lvs[,as.numeric(substr(x_var,3,3))],
+        y_var = #traits_complete[,y_var],
+          scaled.lvs[,as.numeric(substr(y_var,3,3))],
+        clade = factor(traits$phylo_clade, levels = as.character(c(1:11, "X"))),
+        unknown = factor(ifelse(grepl("X", traits$phylo_clade), yes = "known", no="unknown"))
+        )
+      )
+    )
+  
+  strongest_loadings <- 20
+  
+  trait_coordinates <-
+    as.data.frame(unclass(
+      data.frame(
+        Trait = rownames(scaled.lv.coefs)[order(rowSums(scaled.lv.coefs^2),
+                                                decreasing = TRUE)[1:strongest_loadings]],
+        x_coef = #sign(est.lv.coefs[,x_var])*abs(est.lv.coefs[,x_var])^0.5,
+          scaled.lv.coefs[,x_var][order(rowSums(scaled.lv.coefs^2),
+                                                decreasing = TRUE)[1:strongest_loadings]],
+        y_coef = #sign(est.lv.coefs[,y_var])*abs(est.lv.coefs[,y_var])^0.5
+          scaled.lv.coefs[, y_var][order(rowSums(scaled.lv.coefs^2),
+                                                decreasing = TRUE)[1:strongest_loadings]]
+        )
+      )
+    )
+  
+  trait_biplot_labels <- c("oospore_wall_thickness" = "oospore wall thickness",
+                           "oospore_wall_index" = "oospore wall index",
+                           "gr_at_opt" = "growth rate at optimum temp",
+                           "temp_min" = "min temp for growth",
+                           "temp_opt" = "opt temp for growth",
+                           "temp_max" = "max temp for growth",
+                           "temp_range" = "temp range",
+                           "proliferation" = "proliferating",
+                           "caduceus" = "caducous",
+                           "chlamydospores" = "chlamydospores",
+                           "hyphal_swelling" = "hyphal swellings",
+                           "oospores" = "oospores",
+                           "tapering_base" = "tapering base",
+                           "papillateNP" = "non-papillate",
+                           "papillateP" = "papillate",
+                           "papillateSP" = "semi-papillate",
+                           "sporangiophoreCLS" = "closed sympodium",
+                           "sporangiophoreCS" = "compound sympodial",
+                           "sporangiophoreDM" = "downy mildew shape" ,
+                           "sporangiophoreIB" = "irregularly branched",
+                           "sporangiophoreSS" = "simple sympodial",
+                           "sporangiophoreUN" = "unbranched",
+                           "ho_he_sHE" = "heterothallic",
+                           "ho_he_sHO" = "homothallic",
+                           "ho_he_sS" = "sterile",
+                           "oogonia_wallO" = "ornamented",
+                           "oogonia_wallS" = "smooth",
+                           "oogonia_wallW" = "wavy",
+                           "amphi_paraA" = "amphigynous",
+                           "amphi_paraB" = "amphi- and paragynous" ,
+                           "amphi_paraP" = "paragynous",
+                           "aplerotic_pleroticA" = "aplerotic",
+                           "aplerotic_pleroticB" = "plerotic and aplerotic" ,
+                           "aplerotic_pleroticP" = "plerotic",
+                           "aplerotic_pleroticSA" = "slightly aplerotic",
+                           "amphi_para" = "antheridial attachment",
+                           "aplerotic_plerotic" = "space between oospore and oogonial wall",
+                           "sporangiophore" = "sporangiophore form",
+                           "oogonia_wall" = "oogonial wall",
+                           "ho_he_s" = "reproductive strategy",
+                           "papillate" = "papillate")
+  
+  
+  
+  trait_coordinates$trait_labels <- trait_biplot_labels[as.character(trait_coordinates$Trait)]
+  trait_coordinates$feature_type <- NA
+  trait_coordinates$feature_type[grep("sporangiophore|papillate|prolifer|caduc",
+                                      trait_coordinates$Trait)] <- "sporangial features"
+  
+  trait_coordinates$feature_type[grep("ho_he|oospores|chlamydo|hyphal",
+                                      trait_coordinates$Trait)] <- "reproductive and survival features"
+  
+  trait_coordinates$feature_type[grep("oospore|oogonia|tapering|amphi|aplerotic",
+                                      trait_coordinates$Trait)] <- "oospore features"
+
+  
+  trait_coordinates$feature_type[grep("temp_|gr_at_opt",
+                                      trait_coordinates$Trait)] <- "temperature features"
+  
+  trait_coordinates$feature_type <- factor(trait_coordinates$feature_type, levels = c("sporangial features",
+                                                                                      "temperature features",
+                                                                                      "reproductive and survival features",
+                                                                                      "oospore features"))
+  # automate the tick marks and axes limits
+  #traitlab_h <- c(-0.2,  -0.05, -0.45, 0.35,  -0.4, 0.4,  0,  0.2,  0.55, 0.5)
+  #traitlab_v <- c(-0.25,   0.15, 0, 0,   0,   0.1,  -0.05,  0,  0.13, 0.05)
+
+  x_limits <- #c(-4,  3)
+    range(c(species_coordinates[,"x_var"]),
+          trait_coordinates$x_coef)*1.2
+  y_limits <- #c(-2.6,  2.513068)
+    range(c(species_coordinates[,"y_var"],
+            trait_coordinates$y_coef))*1.1
+  
+  x_breaks <- pretty(x_limits)
+  y_breaks <- pretty(y_limits)
+  
+  label_just <- justify_labels(X = trait_coordinates$x_coef, Y = trait_coordinates$y_coef)
+  
+  label_nudge <- nudge_labels(X = trait_coordinates$x_coef, Y = trait_coordinates$y_coef)
+  
+  hj <- label_just$X_adj
+  vj <- label_just$Y_adj
+  
+  disease <- read.csv("P:/NEC05617_PHYTOTHREATS/Data/trait_framework_MS/aerial_soil_water_disease_Treena.csv",
+                    stringsAsFactors = FALSE)
+disease$Species <- gsub("Phytophthora", "P.", disease$species.name)
+disease <- disease[1: 191,c("Species", "aeri_dispers", "soil_dispers", "water_dispers")]
+disease$aerial <- ifelse(disease$aeri_dispers == "Y", yes = 1, no = 0)
+disease$soil <- ifelse(disease$soil_dispers == "Y", yes = 1, no = 0)
+disease$aquatic <- ifelse(disease$water_dispers == "Y", yes = 1, no = 0)
+
+species_coordinates$Species <- as.character(species_coordinates$Species)
+species_coordinates <- merge(species_coordinates, disease[,c("Species", "aerial", "soil", "aquatic")], all.x =TRUE)
+
+
+filter <- c(
+"homothallic" = "abiotic",
+"proliferating" = "biotic",
+"oospores" = "abiotic",
+"sterile" = "biotic" ,
+"non-papillate" = "movement",
+"amphigynous" = NA,
+"max temp for growth" = "abiotic",
+"temp range" = "abiotic",
+"caducous"  = "movement",
+"opt temp for growth" = "abiotic",
+ "compound sympodial" = "movement" ,
+"semi-papillate" = "movement" ,
+"wavy"  = NA,
+"simple sympodial" = "movement",
+"unbranched"  = "movement",
+ "downy mildew shape" = "movement" ,
+"smooth"  = NA ,
+"heterothallic" = "biotic" ,
+"papillate"  = "movement"  ,
+"closed sympodium" = "movement"  )
+filter <- 
+data.frame(trait_labels = names(filter),
+          filter = filter,
+          row.names = NULL)
+
+trait_coordinates <- merge(trait_coordinates, filter)
+
+
+a <- ggplot()+ theme_bw() + theme(
+  #legend.position = c(0.95, 0.25),
+  legend.background = element_rect(fill = "transparent"),
+  legend.title.align = 0,
+  legend.title = element_text(size = 12),
+  legend.text = element_text(size = 12),
+  legend.key.size = unit(0.8, "cm"),
+  panel.grid.major = element_line(colour = "white"),
+  panel.grid.minor = element_line(colour = "white"),
+  plot.margin=unit(c(4,5,1,1),"cm"),
+  legend.key = element_rect(colour = "white"),
+  panel.border = element_rect(size = 2,
+                              colour = "black"),
+  line = element_line(size = 1),
+  axis.title = element_text(size = 16),
+  axis.text = element_text(size = 16),
+  plot.background = element_rect(fill = "transparent")
+)
+
+b <- a + geom_hline(yintercept = 0,
+                    size = 0.4,
+                    colour = "grey") + geom_vline(xintercept = 0,
+                                                  size = 0.5,
+                                                  color = "grey")
+c <- b +  coord_equal(clip = "off", xlim = x_limits, ylim = y_limits) + xlab(paste0("Latent variable ", substr(x_var,3,3)," (", get(paste0("v", substr(x_var,3,3))), " %)"))  + ylab(paste0("\nLatent variable ", substr(y_var,3,3)," (", get(paste0("v", substr(y_var,3,3))), " %)")) 
+
+
+d <- c + annotate(geom = "text", 
+                  x = min(x_limits), 
+                  y = -4, 
+                  label = "stress-tolerance/\ndispersal", 
+                  size = 6,
+                  hjust = 0) + annotate(geom = "text", 
+                  x = -5, 
+                  y = min(y_limits), 
+                  label = "greater dispersal ability", 
+                  size = 6,
+                  hjust = 0,
+                  angle = 90) 
+
+e <- d + annotate(geom = "text", 
+                  x = max(x_limits), 
+                  y = -4, 
+                  label = "combative", 
+                  size = 6,
+                  hjust = 1) +  annotate(geom = "text", 
+                  x = -4.5, 
+                  y = max(y_limits), 
+                  label = "", 
+                  size = 6,
+                  hjust = 1,
+                  angle = 90) 
+f <- e + annotate(geom = "segment", 
+                  x =  -1.5, 
+                  xend = 2.5,
+                  y = -4,
+                  yend = -4,
+                  arrow = arrow(length = unit(0.3, "cm"),
+                type = "open"), size = 1.2) + annotate(geom = "segment", 
+                  x =  -5, 
+                  xend = -5,
+                  y = 3,
+                  yend = -0,
+                  arrow = arrow(length = unit(0.3, "cm"),type = "open"), 
+                size = 1.2) 
+g <- f + annotate(geom = "segment", 
+                  x =  2.5, 
+                  xend = -1.5,
+                  y = -4,
+                  yend = -4,
+                  arrow = arrow(length = unit(0.3, "cm"),type = "open"), 
+                  size = 1.2) + annotate(geom = "segment", 
+                  x =  -5, 
+                  xend = -5,
+                  y = 0,
+                  yend = 3,
+                  #arrow = arrow(length = unit(0.3, "cm"),type = "open"), 
+                  size = 1.2)
+
+
+gg_color_hue <- function(n) {
+  hues = seq(15, 375, length = n + 1)
+  hcl(h = hues, l = 65, c = 100)[1:n]
+}
+
+get_ggcol <- gg_color_hue(3)
+h <- g + geom_scatterpie(data = species_coordinates,
+                    aes(x = x_var,
+                        y = y_var,
+                        r = 0.05),
+                    cols = c("soil", "aerial", "aquatic"),
+                    col = NA,
+                    size = 0.5) + scale_fill_manual("",
+                                                                    values = c("aerial" = "black",
+                                                                               "soil" = "tan",
+                                                                               "aquatic" = "steelblue"))
+
+i <- h + new_scale_color() + geom_segment(
+  data = trait_coordinates,
+  aes(
+    x = 0,
+    y = 0,
+    xend = x_coef,
+    yend = y_coef,
+    col = filter
+  ),
+  arrow = arrow(length = unit(0.3, "cm"),
+                type = "open"),
+  #color = "black",
+  size = 1
+) 
+j <- i + geom_text_repel(
+  data = trait_coordinates,
+  aes(x = x_coef,
+      y = y_coef,
+      label = trait_labels,
+      col = filter),
+  #color = "black",
+  #nudge_x = h_nudge,
+  #nudge_y = v_nudge,
+  size = 4,
+  hjust = hj,
+  vjust = vj,
+  show.legend = FALSE
+)
+
+j
+
+
+# ggsave(j,
+#        filename = "trait_covariance_biplot_with_habitat_pref.tiff",
+#        width = 12,
+#        height = 10,
+#        units = "in",
+#        dpi = 500)
+
+
+
+```
+
+**Fig. 6** Biplot of trait covariance among 179 *Phytophthora* species, with trait loadings (arrows) shown for the 20 most important traits. *Phytophthora* traits are coloured according to their hypothesised adaptive value for the three BAM niche processes ("filter") in order to explore potential resource allocation trade-offs between investing in stress-tolerance traits to overcome environmental filtering (abiotic), combative traits to overcome niche partitioning (biotic) or dispersal traits (movement). Species (points) with more similar trait values are positioned closer together in trait-space. Species are coloured by whether they are predominantly known from soil, aerial or aquatic substrates to demonstrate how traits can mediate habitat filtering of dominant species. The axes can be interpreted in the same way as unconstrained ordination. The latent variables and the trait loadings (latent variable coefficients) were estimated using pure latent variable models with a species by trait matrix as the response. 
+
+
+How strong is the phylogenetic signal in the latent variables?
+
+```{r phylogenetic_signal_inL_Vs }
+
+lambda_LV1 <- fitContinuous(phy = Phytoph_tree, 
+                            dat = setNames(fit_LVmodel$lv.median[,1], rownames(fit_LVmodel$lv.median)),
+                            model = "lambda")
+
+lambda_LV2 <- fitContinuous(phy = Phytoph_tree, 
+                            dat = setNames(fit_LVmodel$lv.median[,2], rownames(fit_LVmodel$lv.median)),
+                            model = "lambda")
+
+#phylogenetic signal in trait-space
+phylo_dist <- as.matrix(cophenetic.phylo(Phytoph_tree), upper = TRUE)[intersect(Phytoph_tree$tip.label, rownames(fit_LVmodel$lv.median)) , intersect(Phytoph_tree$tip.label, rownames(fit_LVmodel$lv.median))]# phylogenetic distance matrix
+LV_phylo_dist <- as.matrix(dist(fit_LVmodel$lv.median[intersect(rownames(phylo_dist), rownames(fit_LVmodel$lv.median)),], upper = TRUE)) # latent variable distance matrix
+
+Mantel_result <- 
+  mantel(xdis = phylo_dist, 
+         ydis = LV_phylo_dist)
+                            
+
+
+```
+
+Latent variable 1: $\lambda$ = `r round(lambda_LV1$opt$lambda, 3)`  
+
+Latent variable 2: $\lambda$ = `r round(lambda_LV2$opt$lambda, 3)`  
+
+Mantel r = `r round(Mantel_result$statistic, 3)`, p = `r round(Mantel_result$signif, 3)`  
+
+**Table 2** *Phytophthora* trait lability and trait covariance. Phylogenetic signal, ??, scales from 0 to 1, where 1 indicates the distribution of trait values among species is entirely phylogenetically conserved. A value of 0 indicates trait values are distributed randomly and is evidence of extreme trait lability in response to selective pressures. MDI is the morphological disparity index developed by Harmon et al. (2003) which measures the difference between observed trait disparity and the disparity expected under Brownian motion (null model), using a global envelope test to determine if these differences were significant at any point in evolutionary history. MDI is a summary statistic for the temporal patterns in trait lability visualised in Fig. 3. Values of ?? and MDI significantly different from those expected under Brownian motion (null model) are denoted with \* and are evidence of significantly labile traits. Trait covariance is quantified as shared responses to latent (unobserved) variables estimated using the latent variable coefficients (??LV1, ??LV2) from model-based ordination. Pink cells indicate positive responses and blue values indicate negative responses to latent variables. More similar colours indicate shared responses and evidence of covariance among those traits. Latent variable coefficients that do not overlap zero are denoted * and are interpreted as evidence for important trait loadings on that latent variable.
+```{r table S1}
+
+
+
+
+lambda_table <- data.frame(trait = lambdas_all$trait, 
+                            lambda = lambdas_all$lambda,
+                           p_lambda = ifelse(lambdas_all$pBM < 0.05,
+                                             yes = "*",
+                                             no = " "),
+                       stringsAsFactors = FALSE
+)
+
+#ifelse(lambdas_all$pBM <= 0.05, yes = paste0(sprintf("%.3f", round(lambdas_all$lambda, 3)), "*"), no = paste0(sprintf("%.3f", round(lambdas_all$lambda, 3)), " "))
+
+mdi_table <- data.frame(trait = text$trait_raw,
+                        MDI = text$mdi,
+                        p_MDI = ifelse(text$p < 0.05,
+                                       yes = "*",
+                                       no = " "),
+                        stringsAsFactors = FALSE)
+#ifelse(text$p <= 0.05, 
+#                                     yes = paste0(sprintf("%.3f", round(text$mdi, 3)), "*"),
+#                                     no = paste0(sprintf("%.3f", round(text$mdi, 3)), " "))
+
+
+lower <- matrix(hpdintervals[grep("lv.coefs", rownames(hpdintervals)),"lower"], nrow = 35, ncol = 4)
+upper <- matrix(hpdintervals[grep("lv.coefs", rownames(hpdintervals)),"upper"], nrow = 35, ncol = 4)
+
+LV_table <- data.frame(trait = rownames(lv_coefs),
+                       theta1 = lv_coefs$theta1,
+                       p_theta1 = ifelse((lower[,2] > 0 & upper[,2] > 0) | (lower[,2] < 0 & upper[,2] < 0),
+                                       yes = "*",
+                                       no = " "),
+                       theta2 = lv_coefs$theta2,
+                       p_theta2 = ifelse((lower[,3] > 0 & upper[,3] > 0) | (lower[,3] < 0 & upper[,3] < 0),
+                                       yes = "*",
+                                       no = " "),
+                       stringsAsFactors = FALSE)
+
+results_table <- merge(merge(lambda_table, 
+                             mdi_table), 
+                       LV_table, 
+                       all = TRUE)
+
+results_table <- results_table[grep("_cat|profile", results_table$trait, invert = TRUE),] 
+
+results_table$trait_labels <- trait_biplot_labels[results_table$trait]
+
+results_table$feature_type <- NA
+
+
+  results_table$feature_type[grep("sporangiophore|papillate|prolifer|caduc",
+                                      results_table$trait)] <- "sporangial features"
+  
+  results_table$feature_type[grep("ho_he|oospores|chlamydo|hyphal",
+                                      results_table$trait)] <- "reproductive and survival features"
+  
+  results_table$feature_type[grep("oospore|oogonia|tapering|amphi|aplerotic",
+                                      results_table$trait)] <- "oospore features"
+
+  
+  results_table$feature_type[grep("temp_|gr_at_opt",
+                                      results_table$trait)] <- "temperature features"
+  
+results_table$feature_type <- factor(results_table$feature_type, levels = c("sporangial features",
+                                                                     "temperature features",
+                                                                     "reproductive and survival features", "oospore features"))
+
+results_table <- results_table[order(results_table$feature_type),]  
+# na_gets_blank <- function(x){
+#   x[is.na(x)] <- ""
+#   return(x)
+# }
+# 
+# results_table <- as.data.frame(apply(results_table, 2, na_gets_blank),
+#                                stringsAsFactors = FALSE)
+
+
+library(tidyverse)
+library(formattable)
+options(knitr.kable.NA = '')
+
+results_table[,c("trait_labels", "lambda", "p_lambda", "MDI", "p_MDI", "theta1", "p_theta1",  "theta2", "p_theta2")] %>%
+# mutate_if(is.numeric, function(x) {
+#     cell_spec(format(round(x, 3), nsmall = 3),
+#               background = spec_color(x, option = "magma", na_color = "white", direction = -1, begin = 0.5),
+#               color = "white")
+#   }) %>%
+  mutate(theta1 = round(theta1, 3),
+         theta2 = round(theta2, 3)) %>%
+   mutate(lambda = ifelse(is.na(lambda),
+                          yes = text_spec(lambda, color = "white"),
+                          no = format(round(lambda, 3), nsmall = 3)),
+         p_lambda = ifelse(is.na(p_lambda),
+                          yes = text_spec(p_lambda, color = "white"),
+                          no = text_spec(p_lambda, align = "l")),
+         MDI = ifelse(is.na(MDI),
+                          yes = text_spec(MDI, color = "white"),
+                          no =format(round(MDI, 3), nsmall = 3)),
+         p_MDI = ifelse(is.na(p_MDI),
+                          yes = text_spec(p_MDI, color = "white"),
+                          no = text_spec(p_MDI, align = "l")),
+         theta1 = ifelse(theta1 <= 0,
+                         yes = color_tile("light blue", "transparent")(theta1*c(theta1<=0)),
+                         no = color_tile("transparent", "pink")(theta1*c(theta1>=0))),
+         p_theta1 = ifelse(is.na(p_theta1),
+                          yes = text_spec(p_theta1, color = "white"),
+                          no = text_spec(p_theta1, align = "l")),
+         theta2 = ifelse(theta2 <= 0,
+                         yes = color_tile("light blue", "transparent")(theta2*c(theta2<=0)),
+                         no = color_tile("transparent", "pink")(theta2*c(theta2>=0))),
+         p_theta2 = ifelse(is.na(p_theta2),
+                          yes = text_spec(p_theta2, color = "white"),
+                          no = text_spec(p_theta2, align = "l")))%>%
+kable(row.names = FALSE,
+        col.names = as.character(c( " ", " ", " ", " ", " ", " "," ", " "," ")), 
+      escape = FALSE,
+      digits = 3) %>% 
+  kable_styling(full_width = FALSE) %>%
+   #add_header_above(c(" " = 1, "model rank" = ncol(table_form) - 1), escape = FALSE) %>%
+    group_rows("sporangial features", min(grep("sporangial features", results_table$feature_type)), max(grep("sporangial features", results_table$feature_type)), escape = FALSE) %>%
+  group_rows("temperature features", min(grep("temperature features", results_table$feature_type)), max(grep("temperature features", results_table$feature_type)), escape = FALSE) %>%
+    group_rows("reproductive and survival features", min(grep("reproductive and survival features", results_table$feature_type)), max(grep("reproductive and survival features", results_table$feature_type)), escape = FALSE) %>%
+    group_rows("oospore features", min(grep("oospore features", results_table$feature_type)), max(grep("oospore features", results_table$feature_type)), escape = FALSE) %>%
+  add_indent(grep("[A-Z]", results_table$trait)) %>%
+  add_header_above(header = (c(" " = 1, "$\\lambda$" = 2, "MDI" = 2, "$\\theta$~LV1~" = 2, "$\\theta$~LV2~" = 2 )), escape = FALSE)%>%
+  column_spec(column = c(3,5,7,9), width = ("0.25cm"))
+  
+
+
+
+```
+
+```{r correlation between MDI and lambda}
+
+lambda_MDI_cor <- cor.test(results_table$lambda, results_table$MDI)
+
+
+```
+
+The negative correlation (`r paste0("r = ", round(lambda_MDI_cor$estimate, 3), ", ", "p = ", round(lambda_MDI_cor$p.value, 3))`) between phylogenetic signal ($\lambda$) and morphological disparity index (MDI) indicates consistency among both metrics of trait lability

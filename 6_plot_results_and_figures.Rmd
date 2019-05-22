@@ -1,0 +1,935 @@
+---
+title: "Figures and tables"
+author: "Louise Barwell"
+date: "5th December 2018"
+output: html_document
+
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,  message = FALSE, warning = FALSE)
+```
+
+```{r echo=FALSE, warning=FALSE}
+rm(list=ls())
+
+library(knitr)
+#library(pandoc)
+library(coda)
+library(reshape2)
+library(ggplot2)
+library(scales)
+library(brms)
+library(abind)
+library(boral)
+library(ggpubr)
+library(htmlTable)
+library(kableExtra)
+library(ggrepel)
+#library(tidyverse)
+
+wd <- "P:/NEC05617_PHYTOTHREATS/Data/impact_MS/opt_temp/"
+setwd(wd)
+save_directory <- wd
+
+
+# load results of all fitted models
+# excluding disease symptom traits
+load("geographic_extent_model_comparison_disease.rData") 
+responseA <- geographic_extent_model_comparison_disease
+impact_metricA <- "impact_geographic_extent"
+  
+load("host_range_model_comparison_disease.rData")
+responseB <- host_range_model_comparison_disease
+impact_metricB <- "impact_host_range"
+rm(list = grep("model_comparison", ls(), value = TRUE))
+
+  # parameter names returned by brms models,
+# in the order the predictors should be displayed
+parname_labels <- 
+  c("b_years_known" = "years known to science",
+    "b_root_disease" = "root disease symptoms",
+    "b_foliar_disease" = "foliar disease symptoms",
+    "b_foliar_disease.root_disease" = "root disease x foliar disease",
+    "b_caduceus" =  "caducous sporangia",
+    "b_proliferation" = "proliferating sporangia",
+    "b_hyphal_swelling" ="hyphal swellings",
+    "b_chlamydospores" = "chlamydospores",
+    "b_oospores" = "oospores",
+    "b_oospore_wall_index" = "oospore wall index",
+    "b_gr_at_opt" = "growth rate at optimum temperature",
+    "b_temp_min" = "min temp for growth",
+    "b_temp_max" = "max temp for growth",
+    "b_temp_opt" = "opt temp for growth",
+    "b_lv1" = "Latent variable 1",
+    "b_lv2" = "Latent variable 2",
+    "b_lv1.lv2" = "Latent variable 1 : Latent variable 2"
+  )
+
+
+```
+Response variables:
+<br>
+```{r}
+for (i in 1:length(grep("model_comparison", list.files(), value = TRUE))){
+  print(paste(strsplit(grep("model_comparison", list.files(), value = TRUE)[i],
+           split = "_")[[1]][1:2], collapse = " "))
+}
+```
+<br>
+<br>
+<br>
+Trait predictors:
+<br>
+```{r}
+gsub("b_", "", grep("b_", grep("Intercept|years", colnames(responseA), value = TRUE, invert = TRUE), value = TRUE))
+```
+Phylogeny:
+<br>
+```{r}
+ifelse(any(grepl("multigene", list.files())), yes = 
+  "multi-gene phylogeny: Martin FN, Blair JE, Coffey MD. 2014. A combined mitochondrial and nuclear multilocus phylogeny of the genus Phytophthora. Fungal Genetics and Biology 66.",
+  no = "single gene ITS6 phylogeny: T. Burgess"
+)
+
+```
+
+```{r  figure 1 functions, echo=FALSE}
+###############################################################################################################
+# Figs. 1 and 3: Top subset of models of impact based on traits (Fig 1) and latent variables (Fig. 3) 
+###############################################################################################################
+
+# function to extract the top subset of models
+get_top_model_subset <- function(model_set,           # one of the outputs from the file 4_collate_model_results.R e.g. responseB_no_year
+                                 rank_by,             # IC metric for ranking models, one of "kfold10IC" or "LOOIC"
+                                 IC_threshold,        # number of IC units to select top model subset 
+                                 traits_or_lv){       # rank the models with individual traits or with trait syndromes (latent variables) as predictors
+  if(traits_or_lv == "LV"){
+    subset_by <- (nrow(model_set) - 3):nrow(model_set)
+  } # just models with LVs
+  if(traits_or_lv == "traits"){
+    subset_by <- 1:(nrow(model_set)-4)
+  } # just models with individual traits 
+  if(traits_or_lv == "both"){
+    subset_by <- 1:(nrow(model_set))
+  } # just models with individual traits 
+  rank_all_models <- model_set[subset_by,,]
+  rank_all_models <-
+    rank_all_models[order(rank_all_models[,rank_by,"est"]),,]
+  rank_all_models <- abind(rank_all_models,
+                           array(rank_all_models[,rank_by,"est"] - rank_all_models[1,rank_by,"est"],
+                                 replace(dim(rank_all_models), 2, 1)),
+                           along = 2)
+  dimnames(rank_all_models)[[2]][grep("^$", dimnames(rank_all_models)[[2]])] <- "diff_IC"
+  rank_all_models <- abind(rank_all_models,
+                           array(1:nrow(rank_all_models),
+                                 replace(dim(rank_all_models), 2, 1)),
+                           along = 2)
+  dimnames(rank_all_models)[[2]][grep("^$", dimnames(rank_all_models)[[2]])] <- "model_rank"
+  rank_all_models <- rank_all_models[,names(which(!apply(apply(rank_all_models, 2, is.na), 2, all))),]
+#  rank_all_models <- rank_all_models[rank_all_models[,"diff_IC","est"] <= IC_threshold,,]
+  return(array(data = rank_all_models[rank_all_models[,"diff_IC","est"] <= IC_threshold,,], 
+               dim = replace(dim(rank_all_models), 1, length(which(rank_all_models[,"diff_IC","est"] <= IC_threshold))), 
+               dimnames = dimnames(rank_all_models)))
+}
+
+
+# function to extract the parameter estimates and convert to format for ggplot2::geom_tile
+get_parest <- function(top_subset){  # output from function get_top_model_subset
+                          
+  top_models <- as.data.frame(array(data = top_subset[,,"est"], 
+                                    dim = dim(top_subset)[1:2], 
+                                    dimnames = dimnames(top_subset)[1:2]))
+  #top_models <- top_models[,names(which(!apply(apply(top_models, 2, is.na), 2, all)))]
+  top_models$b_Intercept <- NULL
+  top_models$rank <- 1:nrow(top_models)
+  top_models$R2_fixed_c <- 0
+  top_models$R2_traits_c <- 0
+  top_models$diff_IC <- 0
+  top_models$ICCadj <- 0
+  top_models$R2_traits_m <- 0
+  top_models$R2_fixed_m <- 0
+  top_models$ICC <- 0
+  melt_top_models <- melt(top_models[,grep("b_|sd_species_name|^rank$|R2_fixed|R2_traits|diff_IC|ICCadj", colnames(top_models), value = TRUE)], id.vars = c("rank"))
+  #melt_top_models$impact_metric <- metric
+  #melt_top_models$impact_metric <- factor(melt_top_models$impact_metric, levels = c("impact response: host range", "impact response: geographic extent"))
+  return(melt_top_models)
+}
+
+# function to score paramter estimates as sig/non-sig and convert to format for ggplot2::geom_tile 
+get_sig <- function(top_subset){ # output from function get_top_model_subset 
+  top_models <- data.frame(array(data = ((top_subset[,,"lower"] > 0 & top_subset[,,"upper"] > 0)| 
+                                  (top_subset[,,"lower"] < 0 & top_subset[,,"upper"] < 0)), 
+                                 dim = dim(top_subset)[1:2], 
+                                 dimnames = dimnames(top_subset)[1:2]),                                                                                                                                                 
+                           rank = 1:nrow(top_subset))
+  top_models <- top_models[
+    ,grep("b_|^rank$|sd_species_name",colnames(top_models), value = TRUE)]
+  top_models$b_Intercept <- NULL
+  melt_top_models <- melt(top_models, id.vars = c("rank"))
+  melt_top_models$value <- ifelse(melt_top_models$value,
+                                  yes = "*",
+                                  no = " ")
+  #melt_top_models$impact_metric <- metric
+  return(melt_top_models)
+}
+
+# function to plot parameter estimates and sigificance in top model subset
+# both impact metrics are plotted together
+plot_model_comparison <- function(model_sets, # e.g model_comparison_no_disease, _model_comparison_disease
+                                  rank_by,
+                                  IC_threshold,
+                                  traits_or_lv){
+  
+  parest_sig <- get_sig(top_subset = get_top_model_subset(model_set = model_sets, 
+                                                                rank_by = rank_by, 
+                                                                IC_threshold = IC_threshold,
+                                                                traits_or_lv = traits_or_lv))
+                      
+  
+  parest <- 
+    get_parest(top_subset = get_top_model_subset(model_set = model_sets, 
+                                                   rank_by = rank_by, 
+                                                   IC_threshold = IC_threshold,
+                                                   traits_or_lv = traits_or_lv))
+  
+      
+  
+  # collate model performance metrics to add to the figure:
+  # rank
+  # delta IC
+  # conditional and marginal R squared
+  # lambda  
+  # intra-class correlation (proportion of variance in impact explained by phylogentic covariance)
+  model_performance <-
+    data.frame(array(data = get_top_model_subset(model_set = model_sets, 
+                                                       rank_by = rank_by, 
+                                                       IC_threshold = IC_threshold,
+                                                       traits_or_lv = traits_or_lv)[,c("model_rank", 
+                                                                                       "diff_IC", 
+                                                                                       "R2_fixed_m",
+                                                                                       "R2_traits_m",
+                                                                                       "R2_fixed_c",
+                                                                                       "R2_traits_c",
+                                                                                       "ICC",
+                                                                                       "ICCadj"),"est"], 
+                     dim = replace(dim(get_top_model_subset(model_set = model_sets, 
+                                                                  rank_by = rank_by, 
+                                                                  IC_threshold = IC_threshold,
+                                                                  traits_or_lv = traits_or_lv))[1:2], 2, length(c("model_rank", 
+                                                                                                                  "diff_IC", 
+                                                                                                                  "R2_fixed_m",
+                                                                                                                  "R2_traits_m",
+                                                                                                                  "R2_fixed_c",
+                                                                                                                  "R2_traits_c",
+                                                                                                                  "ICC",
+                                                                                                                  "ICCadj"))), 
+                     dimnames = list(NULL, c("model_rank", 
+                                             "diff_IC", 
+                                             "R2_fixed_m",
+                                             "R2_traits_m",
+                                             "R2_fixed_c",
+                                             "R2_traits_c",
+                                             "ICC",
+                                             "ICCadj"))))
+  
+  
+  # order the predictors and model performance metrics as they will displayed in the figure
+  # order by the number of times the predictor appears in the top subset
+  b_pars <- parest[grep("^b_", parest$variable),c("variable", "value")]
+  b_pars$variable <- as.vector(b_pars$variable)
+  times_in_top_subset <- function(x){sum(!is.na(x))}
+  parest$variable <- factor(parest$variable,
+                            levels = c(
+                              "diff_IC",
+                              #"ICC",
+                              "ICCadj",
+                              "R2_traits_m",
+                              "R2_fixed_m",
+                              "R2_traits_c", 
+                              "R2_fixed_c",  
+                              names(sort(tapply(b_pars$value, b_pars$variable, times_in_top_subset))),
+                              "sd_species_name__Intercept"                 
+                            ))
+  parest$rank <- factor(parest$rank, levels = as.character(1:max(parest$rank)))
+  
+  gg <- ggplot(parest) 
+  gg <- gg + geom_tile(aes(rank, variable, fill = value)) 
+  gg <- gg + scale_fill_gradient2(low = "blue",
+                                  high = "red",
+                                  mid = "white",
+                                  name = "Parameter\nestimate",
+                                  midpoint = 0
+  )
+  
+  # gg <- gg + facet_grid(~impact_metric,
+  #                       drop = TRUE,
+  #                       scales = "free",
+  #                       space = "free"
+  # )
+  make.bold <- function(x) as.expression(lapply(x, function(y) bquote(bold(.(y)))))
+  gg <- gg + scale_y_discrete(labels=c(make.bold(parname_labels[names(parname_labels) %in% parest$variable]),
+                                       "sd_species_name__Intercept" = expression(bold(sigma~phylogenetic~random~intercept)),
+                                       "R2_fixed_c" = expression(bold(conditional~R^2~(years~known~+~traits~+~phylogeny))),
+                                       "R2_fixed_m" = expression(bold(marginal~R^2~(years~known~+~traits))),
+                                       "R2_traits_c" = expression(bold(conditional~R^2~(traits~+~phylogeny))),
+                                       "R2_traits_m" = expression(bold(marginal~R^2~(traits~only))),
+                                       "ICC" = expression(bold(phylogenetic~intra-class~correlation)),
+                                       "ICCadj" = expression(bold(adjusted~phylogenetic~intra-class~correlation)),
+                                       "diff_IC" = expression(bold(Delta~IC~(10-fold~cross-validation)))),
+                                       
+                                        
+  # "R2_conditional" = expression(conditional~R^2),
+  # "R2_traits" = expression(marginal~R^2),
+  # "diff_IC" = expression(Delta~IC~(10-fold~cross-validation)),
+  # "lambda" = expression(phylogenetic~signal~(lambda))),  
+                              
+                              expand = c(0, 0)) + ylab("") + xlab("")
+  #br <- aggregate(rank~disease+impact_metric, data = parest, FUN = max)$rank
+  gg <- gg + scale_x_discrete(expand = c(0,0))
+  gg <- gg + theme(#axis.text.x=element_text(angle=90, vjust = 0.5, hjust = #1),
+    #text = element_text(size = 5),               
+    axis.text = element_text(colour = "black", size = 10, face = "bold"),
+    axis.title.x = element_text(size = 16, face = "bold"),
+    legend.title = element_text(size = 10),
+    panel.grid = element_blank(),
+    panel.background = element_rect(fill = "white"),
+    panel.border = element_rect(colour = "grey", fill = NA),
+    plot.margin=unit(c(0,0,0,0), "cm"))
+  gg <- gg + geom_text(data = model_performance,
+                       aes(x = model_rank,
+                           y = 1, 
+                           label  = sprintf("%.2f", round(diff_IC, 2)),
+                           angle = 0),
+                       size = 3,
+                       show.legend = FALSE)
+  # gg <- gg + geom_text(data = model_performance,
+  #                      aes(x = model_rank,
+  #                          y = 2, 
+  #                          angle = 0,
+  #                          label  = sprintf("%.2f", round(ICC, 2))),
+  #                      show.legend = FALSE,
+  #                      size = 3)
+  gg <- gg + geom_text(data = model_performance,
+                       aes(x = model_rank,
+                           y = 2, 
+                           angle = 0,
+                           label  = sprintf("%.2f", round(ICCadj, 2))),
+                       show.legend = FALSE,
+                       size = 3)
+  gg <- gg + geom_text(data = model_performance,
+                       aes(x = model_rank,
+                           y = 3, 
+                           angle = 0,
+                           label  = sprintf("%.2f", round(R2_traits_m, 2))),
+                       show.legend = FALSE,
+                       size = 3)
+  gg <- gg + geom_text(data = model_performance,
+                       aes(x = model_rank,
+                           y = 4, 
+                           angle = 0,
+                           label  = sprintf("%.2f", round(R2_fixed_m, 2))),
+                       show.legend = FALSE,
+                       size = 3)
+  gg <- gg + geom_text(data = model_performance,
+                       aes(x = model_rank,
+                           y = 5, 
+                           angle = 0,
+                           label  = sprintf("%.2f", round(R2_traits_c, 2))),
+                       show.legend = FALSE,
+                       size = 3)
+  gg <- gg + geom_text(data = model_performance,
+                       aes(x = model_rank,
+                           y = 6, 
+                           angle = 0,
+                           label  = sprintf("%.2f", round(R2_fixed_c, 2))),
+                       show.legend = FALSE,
+                       size = 3)
+  
+  gg<- gg + geom_text(data = parest_sig,
+                      aes(x = rank,
+                          y = variable,
+                          label = value))
+  
+  gg
+  
+}
+
+
+
+```
+<br> 
+<br> 
+<br> 
+<br> 
+<br> 
+<br> 
+<br> 
+<br> 
+<br> 
+<br> 
+<br> 
+<br> 
+<br> 
+<br> 
+<br> 
+<br> 
+<br> 
+<br> 
+<br> 
+<br> 
+<br> 
+<br> 
+<br> 
+<br> 
+<br> 
+<br> 
+<br> 
+<br> 
+<br> 
+<br> 
+**Table 2  All candidate latent variable models of *Phytophthora* `r paste(strsplit(grep("model_comparison", list.files(), value = TRUE)[1],split = "_")[[1]][1:2], collapse = " ")` ranked by out-of-sample predictive success using 10-fold cross-validation information criterion.  Within-sample goodness-of-fit (R^2^) was partitioned into fixed effects (years known + traits, traits only) and phylogenetically structured residual error (phylogenetic intra-class correlation).  NA values indicate the predictor was absent from the model.  Asterisks indicate where the 95% credible intervals for a parameter estimate do not overlap zero and indicate evidence for a significant effect of the trait in that model.**  
+```{r lv tables, knitr.table.format = "html"}
+
+responseA_lvs <-
+  plot_model_comparison(model_sets = responseA,
+                        rank_by = "kfold10IC",
+                        IC_threshold = 20,
+                        traits_or_lv = "LV")
+
+responseB_lvs <-
+  plot_model_comparison(model_sets = responseB,
+                        rank_by = "kfold10IC",
+                        IC_threshold = 20,
+                        traits_or_lv = "LV")
+
+get_results_table <- function(gg_figure){
+  make_table <- gg_figure$data
+  model_perf <- gg_figure$layers[[2]]$data
+  table_form <- dcast(make_table, rank ~ variable)
+  table_form <- table_form[c("sd_species_name__Intercept",
+                               intersect(colnames(table_form),
+                                          names(parname_labels)))]
+
+  table_form <- cbind(table_form, model_perf[,rev(grep("R2|ICCadj|diff_IC",
+                                                       colnames(model_perf),
+                                                       value = TRUE))])
+  sig_table <- gg_figure$layers[[length(gg_figure$layers)]]$data
+  sig_table <- dcast(sig_table, rank ~ variable)[,c("sd_species_name__Intercept",
+                                                    intersect(colnames(table_form),
+                                                              names(parname_labels)))]
+
+  for(i in 1:ncol(sig_table)){
+      table_form[,i] <- ifelse(sig_table[,i] == "*",
+                               yes = paste0(sprintf("%.3f", round(table_form[,i], 3)),
+                                            sig_table[,i]),
+                               no =  sprintf("%.3f",
+                                             round(table_form[,i], 3)))
+  }
+  for(i in (ncol(sig_table)+1):ncol(table_form)){
+      table_form[,i] <- sprintf("%.3f",
+                                round(table_form[,i], 3))
+
+  }
+  table_form <- t(table_form)
+  colnames(table_form) <- as.character(1:ncol(table_form))
+  sort_times_included <- names(sort(rowSums(!apply(table_form[ colnames(sig_table),], 2, is.na)), decreasing = TRUE))
+  table_form <- rbind(table_form[sort_times_included,], table_form[which(!rownames(table_form) %in% sort_times_included),])
+  better_labels <-
+      c(parname_labels[names(parname_labels) %in% rownames(table_form)],
+        "sd_species_name__Intercept" = "$\\sigma$ phylogenetic random intercept",
+        "R2_fixed_c" = "conditional R^2^ (years known + traits + phylogeny)",
+        "R2_fixed_m" = "marginal R^2^ (years known + traits)",
+        "R2_traits_c" = "conditional R^2^ (traits + phylogeny)",
+        "R2_traits_m" = "marginal R^2^ (traits only)",
+        "ICC" = "phylogenetic intra-class correlation",
+        "ICCadj" = "adjusted phylogenetic intra-class correlation",
+        "diff_IC" = "$\\Delta$ IC (10-fold cross-validation)",
+        "model_rank" = "model rank")
+
+  table_form <- data.frame(parest = as.character(better_labels[rownames(table_form)]),
+                           table_form)
+    #return(table_form)
+  #}
+  
+  # panderOptions('table.alignment.default', function(df)
+  #     ifelse(sapply(df, is.numeric), 'right', 'left'))
+  # panderOptions('table.split.table', Inf)
+  # panderOptions('big.mark', ",")
+  # panderOptions('keep.trailing.zeros', TRUE)
+  # pander(table_form)
+  
+  
+  return(kable(table_form,
+        row.names = FALSE,
+        col.names = as.character(c("", 1:4)),
+        escape = FALSE) %>%
+   add_header_above(c(" " = 1, "model rank" = ncol(table_form) - 1), escape = FALSE) %>%
+    group_rows("parameter", 1, length(grep("sd_|b_", rownames(table_form)))) %>%
+    group_rows("model performance", length(grep("sd_|b_", rownames(table_form)))+1, nrow(table_form)) %>% kable_styling(full_width = FALSE))
+}
+
+
+
+```
+```{r fig.width=15}
+get_results_table(gg_figure = responseA_lvs)
+```
+<br> 
+<br> 
+<br> 
+<br> 
+<br> 
+<br> 
+<br> 
+<br> 
+<br> 
+<br> 
+<br> 
+<br> 
+<br> 
+**Table 3  All candidate latent variable models of *Phytophthora* `r paste(strsplit(grep("model_comparison", list.files(), value = TRUE)[2],split = "_")[[1]][1:2], collapse = " ")` ranked by out-of-sample predictive success using 10-fold cross-validation information criterion.  Within-sample goodness-of-fit (R^2^) was partitioned into fixed effects (years known + traits, traits only) and phylogenetically structured residual error (phylogenetic intra-class correlation).  NA values indicate the predictor was absent from the model.  Asterisks indicate where the 95% credible intervals for a parameter estimate do not overlap zero and indicate evidence for a significant effect of the trait in that model.**
+<br>  
+```{r fig.width=15}
+get_results_table(gg_figure = responseB_lvs)
+```
+<br>  
+<br> 
+<br> 
+```{r fig 1, warning=FALSE, fig.height=11, fig.width=11}
+responseB_traits <- 
+plot_model_comparison(model_sets = responseB,
+                      rank_by = "kfold10IC",
+                      IC_threshold = 2,
+                      traits_or_lv = "traits")
+#host_range_traits
+# ggsave(host_range_traits,
+#        filename = paste0(save_directory, "Fig1A_host_range_traits_subset.tiff"),
+#        height = 11,
+#        width = 11,
+#        units = "in",
+#        dpi = 700)
+
+responseA_traits <- 
+plot_model_comparison(model_sets = responseA,
+                      rank_by = "kfold10IC",
+                      IC_threshold = 2,
+                      traits_or_lv = "traits")
+#geo_extent_traits
+# ggsave(geo_extent_traits,
+#        filename = paste0(save_directory, "Fig1B_geo_ext_traits_subset.tiff"),
+#        height = 11,
+#        width = 11,
+#        units = "in",
+#        dpi = 700)
+
+
+
+stack_plots <- ggarrange(responseA_traits, responseB_traits, nrow = 2, labels = c("(a)", "(b)"), align = "v")
+
+annotate_figure(p = stack_plots,
+                fig.lab = "                 model rank",
+                fig.lab.pos = "bottom",
+                fig.lab.size = 16,
+                fig.lab.face = "bold")
+ ggsave(filename = paste0(save_directory, "Fig2_top_model_subset_traits.tiff"),
+        height = 11,
+        width = 11,
+        units = "in",
+        dpi = 700)
+```
+<br>
+<br>
+**Fig. 2 Best performing trait-based models models of *Phytophthora*  (a) `r paste(strsplit(grep("model_comparison", list.files(), value = TRUE)[1],split = "_")[[1]][1:2], collapse = " ")` and (b) `r paste(strsplit(grep("model_comparison", list.files(), value = TRUE)[2],split = "_")[[1]][1:2], collapse = " ")` impact metrics.  260 candidate trait-based models were ranked using a 10-fold cross-validation information criterion. The subset of best models were selected based on difference in information criterion < 2 IC units from the best model. Asterisks indicate where the 95% credible intervals for a parameter estimate do not overlap zero and indicate evidence for a significant effect of the trait in that model.  Fixed effects are ordered from top to bottom by the number of times they were present in the top model subset.  Grey shading indicates predictors were absent from the model.  Red and blue colours indicate positive and negative parameter estimates, respectively.  Deeper colours indicate stronger effect sizes.  Within-sample goodness-of-fit (R^2^) was quantified by partitioning variance into fixed effects (years known + traits, traits only) and phylogenetically structured error (phylogenetic intra-class correlation).**
+<br> 
+<br> 
+<br> 
+```{r Fig. 2 biplots, fig.height=9, fig.width=7}
+
+load("traits.rData")
+load("fit_LV_model_disease.rData")
+LV_model <- fit_LV_model_disease
+load("fit_null_model_disease.rData")
+null_LV_model <- fit_null_model_disease
+rm(list = grep("fit_",ls(), value = TRUE))
+
+get_biplot <- function(impact_metric){
+
+  
+  
+  mcmc.samps.null <- mcmc(null_LV_model$jags.model$BUGSoutput$sims.matrix, 
+                          start = 1, 
+                            thin = null_LV_model$jags.model$BUGSoutput$n.thin)
+    params.est.null <- colMeans(mcmc.samps.null)
+    
+    nLVs <- 2
+    
+    mcmc.samps <- mcmc(LV_model$jags.model$BUGSoutput$sims.matrix, 
+                       start = 1, 
+                       thin = LV_model$jags.model$BUGSoutput$n.thin)
+    hpdintervals <- HPDinterval(mcmc.samps)
+    params.est <- colMeans(mcmc.samps)
+    
+   # avoid plotting lvsplot to html report 
+   plot.invisible <- function(LV_model){
+      ff <- tempfile()
+      png(filename=ff)
+      x <-lvsplot(LV_model,
+                return.vals = TRUE,
+                alpha = 0.6,
+                jitter = TRUE)
+      dev.off()
+      unlink(ff)
+      x
+   }
+   
+  biplot_coords <- plot.invisible(LV_model)
+
+  scaled.lvs <- as.data.frame(biplot_coords$scaled.lvs)
+  colnames(scaled.lvs) <- c("LV1", "LV2")
+  scaled.lv.coefs <- as.data.frame(biplot_coords$scaled.lv.coefs)
+  colnames(scaled.lv.coefs) <- c("LV1", "LV2")
+  rownames(scaled.lv.coefs) <- rownames(LV_model$lv.coefs.median)
+  
+  
+  nLVs <- 2
+  
+  for(i in 1:nLVs){
+    lv <- as.matrix(as.data.frame(LV_model$lv.coefs.median))[,paste0("theta", 
+                                   i)]
+    lv_all <- as.matrix(as.data.frame(LV_model$lv.coefs.median)[,paste0("theta", 
+                                       1:nLVs)])
+    v <- sum(diag(lv%*%t(lv))) 
+    v_all <- sum(diag(lv_all%*%t(lv_all))) 
+    assign(paste0("v", i),
+           round((v/v_all)*100, 2))
+    #print(paste0("LV", i, " covariance = ", round((v/v_all)*100, 2), "%"))
+    
+  }
+  
+  # choose the latent variables to plot
+  x_var <- "LV1"
+  y_var <- "LV2"
+  
+  impact <- 
+    traits[,impact_metric]
+  
+  # geographic extent
+  if (length(which(impact == 0)) == 0){
+    impact <- impact
+    impact_scale <- "geographic\nextent"
+    impact_ticks <- axisTicks(log(c(1, max(impact, na.rm = TRUE)), 10),
+                            log = TRUE, 
+                            nint = 3)
+    midpoint = median(log10(impact), na.rm = TRUE)
+  }
+  
+  # host range
+  if (length(which(impact == 0)) > 0){
+    impact <- 1 + impact
+    impact_scale <- "host         \nrange "
+    impact_ticks <- axisTicks(log(c(1, max(impact, na.rm = TRUE)), 10),
+                            log = TRUE, 
+                            nint = 3)
+    midpoint = median(log10(impact), na.rm = TRUE)
+  }
+  
+  # disease
+  if (all(impact <= 1)){
+    impact <- as.factor(impact)
+    impact_scale <- gsub("_", " ", impact)
+  }
+  
+  # thin species by loadings: 30 most important
+  #n_spp <- 179
+  #ind_spp <- order(rowSums(x$scaled.lvs^2), decreasing = TRUE)[1:n_spp]
+  species_coordinates <-
+    as.data.frame(unclass(
+      data.frame(
+        Species = traits$species_name,
+        x_var = #traits_complete[,x_var],
+          scaled.lvs[,as.numeric(substr(x_var,3,3))],
+        y_var = #traits_complete[,y_var],
+          scaled.lvs[,as.numeric(substr(y_var,3,3))],
+        clade = as.factor(traits$phylo_clade),
+        impact = impact)
+    )
+    )
+  
+  trait_coordinates <-
+    as.data.frame(unclass(
+      data.frame(
+        Trait = as.character(parname_labels[paste0("b_", rownames(scaled.lv.coefs))]),
+        x_coef = #sign(est.lv.coefs[,x_var])*abs(est.lv.coefs[,x_var])^0.5,
+          scaled.lv.coefs[, as.numeric(substr(x_var,3,3))]*0.5,
+        y_coef = #sign(est.lv.coefs[,y_var])*abs(est.lv.coefs[,y_var])^0.5
+          scaled.lv.coefs[, as.numeric(substr(y_var,3,3))]*0.5
+      )
+    ))
+  # automate the tick marks and axes limits
+  traitlab_h <- c(-0.2,  -0.05, -0.45, 0.35,  -0.4, 0.4,  0,  0.2,  0.55, 0.5)
+  traitlab_v <- c(-0.25,   0.15, 0, 0,   0,   0.1,  -0.05,  0,  0.13, 0.05)
+
+  x_limits <- #c(-4,  3)
+    range(c(species_coordinates[,"x_var"]),
+          trait_coordinates$x_coef)*1.2
+  y_limits <- #c(-2.6,  2.513068)
+    range(c(species_coordinates[,"y_var"],
+            trait_coordinates$y_coef))*1.1
+  
+  x_breaks <- pretty(x_limits)
+  y_breaks <- pretty(y_limits)
+  
+  #hj <- c(0,0,0 , 0, 0, 1, 0.5, 1, 0.5, 0.5)
+  #hj <- rep(0.5, nrow(trait_coordinates))
+  #vj <- c(0.5,  0.5,  1,  0.5, 0.5, 0.5, 0.5, 0, 0, 0)
+  #hj <- c(1.1,  -0.1,  -0.1,  -0.1, 1.1, -0.1, -0.1, -0.1, 0, 0)
+  
+  
+  
+  a <- ggplot()
+  # in case we need to add species names shortedn to first 3 characters, or four characters for duplicates
+  #which(duplicated(substr(gsub("Phytophthora |x |\\'", "",   # species_coordinates$Species), 1, 3)))
+  # a <- ggplot() + geom_text(
+  #   data = species_coordinates,
+  #   aes(x = x_var,
+  #       y = y_var,
+  #       label = Species,
+  #       colour = impact
+  #   ),
+  #   size = 2,
+  #   hjust = 1.1
+  # )
+  
+  b <- a + geom_hline(yintercept = 0,
+                      size = 0.5,
+                      colour = "grey") + geom_vline(xintercept = 0,
+                                                    size = 0.5,
+                                                    color = "grey")
+  c <- b + geom_point(data = species_coordinates,
+                      aes(x = x_var,
+                          y = y_var,
+                          col = impact,
+                          fill = impact),
+                      size = 3)
+  
+  if(grepl("host|geographic", impact_metric)){
+    d <- c + scale_fill_gradient2(
+      low = "blue",
+      mid = "grey",
+      high = "red",
+      midpoint = midpoint,
+      guide = "colourbar",
+      na.value = "transparent",
+      impact_scale,
+      trans = "log10",
+      limits = c(1, max(species_coordinates$impact)),
+      breaks = impact_ticks
+    )
+    e <- d + scale_colour_gradient2(
+      low = "blue",
+      mid = "grey",
+      high = "red",
+      midpoint = midpoint,
+      na.value = "transparent",
+      guide = "colourbar",
+      impact_scale,
+      trans = "log10",
+      limits = c(1, max(species_coordinates$impact)),
+      breaks = impact_ticks
+    )
+  }
+  if(grepl("disease", impact_metric)){
+    d <- c + scale_fill_manual(impact_scale,
+                               values = c("grey",
+                                          "black"),
+                               na.value = "transparent"
+                               )
+      
+    e <- d + scale_colour_manual(impact_scale,
+                               values = c("grey",
+                                          "black"),
+                               na.value = "transparent"
+                               )
+  }
+  e <- e + geom_point(data = species_coordinates[is.na(species_coordinates$impact),],
+                      aes(x = x_var,
+                          y = y_var),
+                      shape = 1,
+                      size = 3
+                      )
+  
+  f <- e + geom_text_repel(
+    data = trait_coordinates,
+    aes(x = x_coef,
+        y = y_coef,
+        label = Trait),
+    color = "black",
+    nudge_x = traitlab_h,
+    nudge_y = traitlab_v,
+    size = 3#,
+    #hjust = hj,
+    #vjust = vj
+  )
+  
+  g <- f + geom_segment(
+    data = trait_coordinates,
+    aes(
+      x = 0,
+      y = 0,
+      xend = x_coef,
+      yend = y_coef
+    ),
+    arrow = arrow(length = unit(0.3, "cm"),
+                  type = "open"),
+    color = "black",
+    size = 1
+  )
+  #g
+  
+  h <- g + theme_bw() + theme(
+    #legend.position = c(0.95, 0.25),
+    legend.background = element_rect(fill = "transparent"),
+    legend.title.align = 0,
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 12),
+    legend.key.size = unit(0.8, "cm"),
+    panel.grid.major = element_line(colour = "white"),
+    panel.grid.minor = element_line(colour = "white"),
+    legend.key = element_rect(colour = "white"),
+    panel.border = element_rect(size = 2,
+                                colour = "black"),
+    line = element_line(size = 1),
+    axis.title = element_text(size = 16),
+    axis.text = element_text(size = 16)
+  )
+  i <- h + scale_x_continuous(name = paste0("Latent variable ", substr(x_var,3,3)," (", get(paste0("v", substr(x_var,3,3))), " %)"),
+                              breaks = x_breaks,
+                              limits = x_limits)
+  j <- i + scale_y_continuous(name = paste0("Latent variable ", substr(y_var,3,3)," (", get(paste0("v", substr(y_var,3,3))), " %)"),
+                              breaks = y_breaks,
+                              limits = y_limits)
+  k <- j + coord_fixed(ratio = 1)
+  return(k)
+}
+
+responseA_biplot <- get_biplot(impact_metric = impact_metricA)
+responseB_biplot <- get_biplot(impact_metric = impact_metricB)
+ggarrange(responseA_biplot,
+          responseB_biplot,
+          labels = c("(a)", "(b)"),
+          nrow = 2)
+
+ ggsave(filename = paste0(save_directory, "Fig3_lv_biplot.tiff"),
+        height = 9,
+        width = 7,
+        units = "in",
+        dpi = 700)
+
+```
+<br>
+**Fig 3. Biplot of *Phytophthora* trait-space with species (points) coloured by the impact metrics (a) `r paste(strsplit(grep("model_comparison", list.files(), value = TRUE)[1],split = "_")[[1]][1:2], collapse = " ")` and (b) `r paste(strsplit(grep("model_comparison", list.files(), value = TRUE)[2],split = "_")[[1]][1:2], collapse = " ")`.  Empty points respresent species for which impact data were not collated.  Axes of trait-space were derived from multivariate latent variable models which capture trait covariance among species.  The length and direction of arrows represents the strength ofloadings of traits onto each latent variable**       
+<br>
+<br>
+<br>
+Trait covariance explained by two latent variables, expressed as deviance explained compared to a null model (no latent variables)
+```{r}
+# deviance explained
+(null_LV_model$jags.model$BUGSoutput$median$deviance-LV_model$jags.model$BUGSoutput$median$deviance)/null_LV_model$jags.model$BUGSoutput$median$deviance
+
+```
+<br>
+<br>
+<br>
+```{r Fig. 4 functions, fig.width=11, fig.height=9}
+
+get_traits_v_syndromes_plot <- function(model_set){
+
+  traits_v_syndromes <- 
+    as.data.frame(get_top_model_subset(model_set = model_set,
+                                       rank_by = "kfold10IC", 
+                                       IC_threshold = 1000, 
+                                       traits_or_lv = "both")[,,"est"])
+    
+  traits_v_syndromes$set[traits_v_syndromes$model_index <= (nrow(traits_v_syndromes) - 4)] <- "individual traits"
+  traits_v_syndromes$set[traits_v_syndromes$model_index > (nrow(traits_v_syndromes) - 4)] <- "trait syndromes - latent variables"
+  traits_v_syndromes$set[traits_v_syndromes$model_index == 1] <- "null model: phylogeny + years known"
+  traits_v_syndromes$set <- factor(traits_v_syndromes$set,
+                                              levels = c("individual traits",
+                                                         "trait syndromes - latent variables",
+                                                         "null model: phylogeny + years known"))
+  
+  traits_v_syndromes$sizes <- ifelse(grepl("syndromes", traits_v_syndromes$set), 4, 2)
+  traits_v_syndromes$sizes[traits_v_syndromes$model_index == 1] <- 4
+  traits_v_syndromes$shapes[traits_v_syndromes$model_index <= (nrow(traits_v_syndromes) - 4)] <- 20
+  traits_v_syndromes$shapes[traits_v_syndromes$model_index > (nrow(traits_v_syndromes) - 4)] <- 19
+  traits_v_syndromes$shapes[traits_v_syndromes$model_index == 1] <- 17
+  
+  null_model <- data.frame(null_model_rank = which.min(traits_v_syndromes$model_index),
+                           null_model_IC = traits_v_syndromes$diff_IC[which.min(traits_v_syndromes$model_index)])
+  
+  
+  gg <- ggplot(traits_v_syndromes)
+  #gg <- gg + scale_shape_identity()
+  #gg <- gg + scale_size_identity()
+  gg <- gg + geom_point(aes_string(x = "model_rank",
+                                   y = "diff_IC",
+                                   col = "set",
+                                   shape = "set",
+                                   size = "set"))
+                                                             
+  gg <- gg + scale_colour_manual (name = "", 
+                                values = c("grey50", "black", "black"))
+  gg <- gg + scale_shape_manual (name = "", 
+                                  values = c(20, 19, 17))
+  gg <- gg + scale_size_manual (name = "", 
+                                 values = c(4, 12, 12))
+  
+  #
+  gg <- gg + theme_classic()
+  gg <- gg + theme(legend.text = element_text(size = 16),
+                   axis.title = element_text(size = 16),
+                   axis.text = element_text(size = 16),
+                   plot.margin = unit(c(0.5, 1.5, 0.5, 0.5), "cm"))
+  #gg <- gg + theme(panel.grid = element_blank(),
+  #                 legend.position = "none")
+ 
+  
+  # shade the top model subset IC < 2
+  top_subset <- data.frame(xmax = max(traits_v_syndromes$model_rank[traits_v_syndromes$diff_IC < 2]),
+                           ymax = 2)
+  gg <- gg + geom_rect(data = top_subset,
+                       aes(xmin = -Inf, 
+                       xmax = xmax, 
+                       ymin = -Inf, 
+                       ymax = ymax),
+                       alpha = 0.3,
+                       col = NA)
+  gg <- gg + scale_x_continuous(name =  "model rank", breaks = pretty(traits_v_syndromes$model_rank, n = 5)) 
+  gg <- gg + scale_y_continuous(name = expression(paste(Delta, "IC")), pretty(traits_v_syndromes$diff_IC, n = 5))
+  return(gg)
+}
+
+```
+```{r fig3 plots, fig.height=11, fig.width=11}
+t_v_s_A <- get_traits_v_syndromes_plot(model_set = responseA)
+t_v_s_B <- get_traits_v_syndromes_plot(model_set = responseB)
+
+ggarrange(t_v_s_A, 
+          t_v_s_B,
+          labels = c("(a)", "(b)"),
+          nrow = 2,
+          common.legend = TRUE,
+          legend = "right")
+
+# save the figure
+ ggsave(filename = "Fig4_traits_vs_syndromes.tiff",
+        height = 9,
+        width = 11,
+        units = "in",
+        dpi = 700)                           
+```
+<br>
+**Fig. 4  Performance of individual trait-based models (grey circles) and trait syndrome models (black circles) for predicting (a) `r paste(strsplit(grep("model_comparison", list.files(), value = TRUE)[1],split = "_")[[1]][1:2], collapse = " ")` and (b) `r paste(strsplit(grep("model_comparison", list.files(), value = TRUE)[2],split = "_")[[1]][1:2], collapse = " ")` of *Phytophthora* species based on individual traits (grey circles) and trait syndromes . Null models (black triangles) contain no ecological traits as predictors, but include an intercept, a fixed effect of years known to science and a phylogenetically structured random intercept.  Trait syndrome-based models use latent variables as predictors.  These are derived from model-based ordination of species in multivariate trait-space.  Models are ranked based on their predictive performance using the difference in the 10-fold cross-validation information criterion ($\Delta IC$).  The shaded regions in the bottom left of each plot represent the top subset of models within 5 IC units of the top-ranked model.** 

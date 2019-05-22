@@ -1,0 +1,124 @@
+## JAGS model written for boral version 1.7 on 2019-05-22 16:35:06 ##
+
+ model {
+	 ## Data Level ## 
+	 for(i in 1:n) {
+		 eta[i,1] <- inprod(lv.coefs[1,2:(num.lv+1)],lvs[i,])
+		 y[i,1] ~ dnorm(lv.coefs[1,1] + eta[i,1],pow(lv.coefs[1,num.lv+2],-2)) 
+
+		 eta[i,2] <- inprod(lv.coefs[2,2:(num.lv+1)],lvs[i,])
+		 y[i,2] ~ dnorm(lv.coefs[2,1] + eta[i,2],pow(lv.coefs[2,num.lv+2],-2)) 
+
+		 eta[i,3] <- inprod(lv.coefs[3,2:(num.lv+1)],lvs[i,])
+		 y[i,3] ~ dnorm(lv.coefs[3,1] + eta[i,3],pow(lv.coefs[3,num.lv+2],-2)) 
+
+		 eta[i,4] <- inprod(lv.coefs[4,2:(num.lv+1)],lvs[i,])
+		 y[i,4] ~ dnorm(lv.coefs[4,1] + eta[i,4],pow(lv.coefs[4,num.lv+2],-2)) 
+
+		 eta[i,5] <- inprod(lv.coefs[5,2:(num.lv+1)],lvs[i,])
+		 y[i,5] ~ dnorm(lv.coefs[5,1] + eta[i,5],pow(lv.coefs[5,num.lv+2],-2)) 
+
+		 eta[i,6] <- inprod(lv.coefs[6,2:(num.lv+1)],lvs[i,])
+		 y[i,6] ~ dnorm(lv.coefs[6,1] + eta[i,6],pow(lv.coefs[6,num.lv+2],-2)) 
+
+		 eta[i,7] <- inprod(lv.coefs[7,2:(num.lv+1)],lvs[i,])
+		 y[i,7] ~ dnorm(lv.coefs[7,1] + eta[i,7],pow(lv.coefs[7,num.lv+2],-2)) 
+
+		 eta[i,8] <- inprod(lv.coefs[8,2:(num.lv+1)],lvs[i,])
+		 y[i,8] ~ dbin(phi(lv.coefs[8,1] + eta[i,8]),1)
+
+		 eta[i,9] <- inprod(lv.coefs[9,2:(num.lv+1)],lvs[i,])
+		 y[i,9] ~ dbin(phi(lv.coefs[9,1] + eta[i,9]),1)
+
+		 eta[i,10] <- inprod(lv.coefs[10,2:(num.lv+1)],lvs[i,])
+		 y[i,10] ~ dbin(phi(lv.coefs[10,1] + eta[i,10]),1)
+
+		 eta[i,11] <- inprod(lv.coefs[11,2:(num.lv+1)],lvs[i,])
+		 y[i,11] ~ dbin(phi(lv.coefs[11,1] + eta[i,11]),1)
+
+		 eta[i,12] <- inprod(lv.coefs[12,2:(num.lv+1)],lvs[i,])
+		 y[i,12] ~ dbin(phi(lv.coefs[12,1] + eta[i,12]),1)
+
+		 eta[i,13] <- inprod(lv.coefs[13,2:(num.lv+1)],lvs[i,])
+		 y[i,13] ~ dbin(phi(lv.coefs[13,1] + eta[i,13]),1)
+
+		 eta[i,14] <- inprod(lv.coefs[14,2:(num.lv+1)],lvs[i,])
+		 y[i,14] ~ dbin(phi(lv.coefs[14,1] + eta[i,14]),1)
+
+		 eta[i,15] <- inprod(lv.coefs[15,2:(num.lv+1)],lvs[i,])
+		 y[i,15] ~ dbin(phi(lv.coefs[15,1] + eta[i,15]),1)
+
+		 eta[i,16] <- inprod(lv.coefs[16,2:(num.lv+1)],lvs[i,])
+		 y[i,16] ~ dbin(phi(lv.coefs[16,1] + eta[i,16]),1)
+
+		 eta[i,17] <- inprod(lv.coefs[17,2:(num.lv+1)],lvs[i,])
+		 y[i,17] ~ dbin(phi(lv.coefs[17,1] + eta[i,17]),1)
+
+		 eta[i,18] <- inprod(lv.coefs[18,2:(num.lv+1)],lvs[i,])
+		 y[i,18] ~ dbin(phi(lv.coefs[18,1] + eta[i,18]),1)
+
+		 eta[i,19] <- inprod(lv.coefs[19,2:(num.lv+1)],lvs[i,])
+		 y[i,19] ~ dbin(phi(lv.coefs[19,1] + eta[i,19]),1)
+
+		 eta[i,20] <- inprod(lv.coefs[20,2:(num.lv+1)],lvs[i,])
+		 y[i,20] ~ dbin(phi(lv.coefs[20,1] + eta[i,20]),1)
+
+		 eta[i,21] <- inprod(lv.coefs[21,2:(num.lv+1)],lvs[i,])
+		 y[i,21] ~ dbin(phi(lv.coefs[21,1] + eta[i,21]),1)
+
+		 eta[i,22] <- inprod(lv.coefs[22,2:(num.lv+1)],lvs[i,])
+		 y[i,22] ~ dbin(phi(lv.coefs[22,1] + eta[i,22]),1)
+
+		 eta[i,23] <- inprod(lv.coefs[23,2:(num.lv+1)],lvs[i,])
+		 y[i,23] ~ dbin(phi(lv.coefs[23,1] + eta[i,23]),1)
+
+		 eta[i,24] <- inprod(lv.coefs[24,2:(num.lv+1)],lvs[i,])
+		 y[i,24] ~ dbin(phi(lv.coefs[24,1] + eta[i,24]),1)
+
+		 eta[i,25] <- inprod(lv.coefs[25,2:(num.lv+1)],lvs[i,])
+		 y[i,25] ~ dbin(phi(lv.coefs[25,1] + eta[i,25]),1)
+
+		 eta[i,26] <- inprod(lv.coefs[26,2:(num.lv+1)],lvs[i,])
+		 y[i,26] ~ dbin(phi(lv.coefs[26,1] + eta[i,26]),1)
+
+		 eta[i,27] <- inprod(lv.coefs[27,2:(num.lv+1)],lvs[i,])
+		 y[i,27] ~ dbin(phi(lv.coefs[27,1] + eta[i,27]),1)
+
+		 eta[i,28] <- inprod(lv.coefs[28,2:(num.lv+1)],lvs[i,])
+		 y[i,28] ~ dbin(phi(lv.coefs[28,1] + eta[i,28]),1)
+
+		 eta[i,29] <- inprod(lv.coefs[29,2:(num.lv+1)],lvs[i,])
+		 y[i,29] ~ dbin(phi(lv.coefs[29,1] + eta[i,29]),1)
+
+		 eta[i,30] <- inprod(lv.coefs[30,2:(num.lv+1)],lvs[i,])
+		 y[i,30] ~ dbin(phi(lv.coefs[30,1] + eta[i,30]),1)
+
+		 eta[i,31] <- inprod(lv.coefs[31,2:(num.lv+1)],lvs[i,])
+		 y[i,31] ~ dbin(phi(lv.coefs[31,1] + eta[i,31]),1)
+
+		 eta[i,32] <- inprod(lv.coefs[32,2:(num.lv+1)],lvs[i,])
+		 y[i,32] ~ dbin(phi(lv.coefs[32,1] + eta[i,32]),1)
+
+		 eta[i,33] <- inprod(lv.coefs[33,2:(num.lv+1)],lvs[i,])
+		 y[i,33] ~ dbin(phi(lv.coefs[33,1] + eta[i,33]),1)
+
+		 eta[i,34] <- inprod(lv.coefs[34,2:(num.lv+1)],lvs[i,])
+		 y[i,34] ~ dbin(phi(lv.coefs[34,1] + eta[i,34]),1)
+
+		 eta[i,35] <- inprod(lv.coefs[35,2:(num.lv+1)],lvs[i,])
+		 y[i,35] ~ dbin(phi(lv.coefs[35,1] + eta[i,35]),1)
+
+		 }
+	 ## Latent variables ##
+	 for(i in 1:n) { for(k in 1:num.lv) { lvs[i,k] ~ dnorm(0,1) } } 
+
+	 ## Process level and priors ##
+	 for(j in 1:p) { lv.coefs[j,1] ~ dnorm(0,0.1) } ## Separate species intercepts
+
+	 for(i in 1:(num.lv-1)) { for(j in (i+2):(num.lv+1)) { lv.coefs[i,j] <- 0 } } ## Constraints to 0 on upper diagonal
+	 for(i in 1:num.lv) { lv.coefs[i,i+1] ~ dnorm(0,0.1)I(0,) } ## Sign constraints on diagonal elements
+	 for(i in 2:num.lv) { for(j in 2:i) { lv.coefs[i,j] ~ dnorm(0,0.1) } } ## Free lower diagonals
+	 for(i in (num.lv+1):p) { for(j in 2:(num.lv+1)) { lv.coefs[i,j] ~ dnorm(0,0.1) } } ## All other elements
+	 for(j in 1:p) { lv.coefs[j,num.lv+2] ~ dunif(0,30) } ## Dispersion parameters
+
+	 }
