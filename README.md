@@ -9,6 +9,8 @@ The data and code reproduce the analyses in:
 
 These studies develop and test ideas for a trait-based early warning system for pathogens for use in plant health risk assessment.
 
+The data folder contains the *Phytophthora* trait database, ITS phylogeny, host range and country-level distribution data and habitat preferences. There is also a file of supporting information describing the data in the trait database.   
+
 The file explore_trait_database.RMD reproduces the analyses in the main text of Barwell et al. (in prep.) A conceptual trait-based framework for invasion risk assessment of oomycete plant pathogensthe paper.  It generates the explore_trait_database.html document to help users visualise trait evolution and patterns of trait covariance.  
 
 The numbered scripts reproduce the analyses in Barwell et al. (in prep.), Trait-based approaches for predicting future global impacts in the genus *Phytophthora* . The scripts are numbered in the order they should be run. Each script outputs the R objects required for the next stage of the analysis.
