@@ -1,215 +1,192 @@
-species.name,phylo_clade,phylo_sub_clade,known_disease,folira_fruit,fine_root,root,stem_cank,aeri_dispers,soil_dispers,water_dispers,
-Phytophthora nicotianae,1,1,Y,Y,Y,Y,Y,Y,Y,N,
-Phytophthora 'aleatoria',1,1a,,,,,,,,,
-Phytophthora cactorum,1,1a,Y,Y,Y,Y,Y,Y,Y,N,
-Phytophthora hedraiandra,1,1a,Y,Y,N,N,N,Y,Y,N,
-Phytophthora idaei,1,1a,Y,N,Y,Y,N,N,Y,N,
-Phytophthora pseudotsugae,1,1a,Y,N,Y,Y,N,N,Y,N,
-Phytophthora x peligrandis,1,1a,Y,N,Y,Y,Y,N,Y,N,
-Phytophthora x serendipita,1,1a,Y,N,Y,Y,N,N,Y,N,
-Phytophthora clandestina,1,1b,Y,N,Y,N,Y,N,Y,N,
-Phytophthora iranica,1,1b,Y,N,Y,Y,N,N,Y,N,
-Phytophthora tentaculata,1,1b,Y,N,Y,Y,N,N,Y,N,
-Phytophthora betacei,1,1c,Y,Y,N,N,N,Y,Y,N,
-Phytophthora urerae,1,1c,,,,,,,,,
-Phytophthora infestans,1,1c,Y,Y,N,N,N,Y,Y,N,
-Phytophthora ipomoeae,1,1c,Y,Y,N,N,N,Y,Y,N,
-Phytophthora mirabilis,1,1c,Y,Y,N,N,N,Y,Y,N,
-Phytophthora phaseoli,1,1c,Y,Y,Y,N,N,Y,Y,N,
-Phytophthora x andina,1,1c,Y,Y,N,N,N,Y,Y,N,
-Phytophthora oleae,2,2,Y,Y,N,N,N,Y?,N,N,
-Phytophthora 'mekongensis',2,2a,Y,Y,N,N,Y,Y,Y,N,
-Phytophthora botryosa,2,2a,Y,Y,Y,Y,N,Y,Y,N,
-Phytophthora citrophthora,2,2a,Y,Y,Y,Y,Y,N,Y,N,
-Phytophthora colocasiae,2,2a,Y,Y,N,N,N,Y,Y,N,
-Phytophthora himalsilva,2,2a,N,N,Y,N,N,N,Y,N,
-Phytophthora meadii,2,2a,Y,Y,Y,Y,N,Y,Y,N,
-Phytophthora occultans,2,2a,Y,N,Y,Y,N,N,Y,N,
-Phytophthora terminalis,2,2a,Y,N,Y,Y,N,N,Y,N,
-Phytophthora amaranthi,2,2b,Y,Y,Y,Y,Y,Y,Y,N,
-Phytophthora capsici,2,2b,Y,Y,Y,Y,N,Y,Y,N,
-Phytophthora glovera,2,2b,Y,N,Y,Y,N,N,Y,N,
-Phytophthora mengei,2,2b,Y,N,Y,Y,Y,N,Y,N,
-Phytophthora mexicana,2,2b,Y,Y,Y,Y,Y,Y,Y,N,
-Phytophthora siskiyouensis,2,2b,Y,N,Y,Y,Y,N,Y,N,
-Phytophthora tropicalis,2,2b,Y,Y,Y,Y,N,Y,Y,N,
-Phytophthora 'emanzi',2,2c,N,N,Y,Y,N,N,Y,N,
-Phytophthora acerina,2,2c,Y,N,Y,Y,Y,N,Y,N,
-Phytophthora capensis,2,2c,Y,N,Y,Y,N,N,Y,N,
-Phytophthora caryae,2,2c,N,N,N,N,N,N,Y,Y,
-Phytophthora citricola,2,2c,Y,N,Y,Y,Y,N,Y,N,
-Phytophthora multivora,2,2c,Y,N,Y,Y,Y,N,Y,N,
-Phytophthora pachypleura,2,2c,Y,N,Y,Y,Y,N,Y,N,
-Phytophthora pini,2,2c,Y,N,Y,Y,N,N,Y,N,
-Phytophthora plurivora,2,2c,Y,N,Y,Y,Y,N,Y,N,
-Phytophthora 'acaciavora',2,2d,Y,N,Y,Y,Y,N,Y,N,
-Phytophthora bishii,2,2d,Y,N,Y,Y,N,N,Y,N,
-Phytophthora elongata,2,2d,Y,N,Y,Y,Y,N,Y,N,
-Phytophthora frigida,2,2d,Y,N,Y,Y,N,N,Y,N,
-Phytophthora 'aquatilis',2,2e,N,N,N,N,N,N,N,Y,
-Phytophthora multivesiculata,2,2e,Y,Y,N,N,N,Y,Y,N,
-Phytophthora ilicis,3,3,Y,Y,N,N,N,Y,Y,N,
-Phytophthora nemorosa,3,3,Y,Y,N,N,N,Y,Y,N,
-Phytophthora pluvialis,3,3,Y,Y,N,N,N,Y,Y,N,
-Phytophthora pseudosyringae,3,3,Y,N,Y,Y,N,N,Y,N,
-Phytophthora psychrophila,3,3,Y,N,Y,Y,N,N,Y,N,
-Phytophthora 'totora',3,,,,,,,,,,
-Phytophthora alticola,4,4,Y,N,Y,Y,N,N,Y,N,
-Phytophthora arenaria,4,4,Y,N,Y,Y,Y,N,Y,N,
-Phytophthora boodjera,4,4,Y,N,Y,Y,N,N,Y,N,
-Phytophthora litchii,4,4,Y,N,Y,N,N,N,Y,N,
-Phytophthora megakarya,4,4,Y,Y,Y,Y,N,Y,Y,N,
-Phytophthora palmivora,4,4,Y,Y,Y,Y,Y,Y,Y,N,
-Phytophthora quercetorum,4,4,Y,N,Y,Y,N,N,Y,N,
-Phytophthora agathidicida,5,5,Y,N,Y,Y,Y,N,Y,N,
-Phytophthora castaneae,5,5,Y,N,Y,Y,Y,N,Y,N,
-Phytophthora cocois,5,5,Y,N,Y,Y,Y,N,Y,N,
-Phytophthora heveae,5,5,Y,Y,Y,Y,Y,Y,Y,N,
-Phytophthora oreophila,6,6a,N,N,N,N,N,N,Y,N,
-Phytophthora 'personii',6,6a,Y,N,Y,Y,N,N,Y,Y,
-Phytophthora 'walnut',6,6a,Y,N,Y,Y,N,N,Y,N,
-Phytophthora balyanboodja,6,6a,N,Y,Y,N,N,N,Y,N,
-Phytophthora chesapeakensis,6,6a,N,N,N,N,N,N,N,Y,
-Phytophthora condilina,6,6a,N,N,Y,N,N,N,Y,N,
-Phytophthora cooljarloo,6,6a,N,N,Y,N,N,N,Y,N,
-Phytophthora gemini,6,6a,Y,Y,N,N,N,N,N,Y,
-Phytophthora humicola,6,6a,Y,N,Y,Y,N,N,Y,N,
-Phytophthora inundata,6,6a,Y,N,Y,Y,N,N,Y,Y,
-Phytophthora kwongonina,6,6a,N,N,Y,N,N,N,Y,N,
-Phytophthora pseudorosacearum,6,6a,N,N,Y,N,N,N,Y,N,
-Phytophthora rosacearum,6,6a,Y,N,Y,Y,N,N,Y,N,
-Phytophthora 'paludosa',6,6b,N,N,N,N,N,N,Y,N,
-Phytophthora 'raspberry',6,6b,N,N,N,N,N,N,Y,Y,
-Phytophthora amnicola,6,6b,N,N,Y,N,N,N,Y,Y,
-Phytophthora bilorbang,6,6b,Y,N,Y,Y,N,N,Y,Y,
-Phytophthora borealis,6,6b,N,N,N,N,N,N,N,Y,
-Phytophthora chlamydospora,6,6b,N,N,Y,N,N,N,Y,Y,
-Phytophthora crassamura,6,6b,Y,N,Y,Y,Y,N,Y,N,
-Phytophthora fluvialis,6,6b,N,N,N,N,N,N,Y,Y,
-Phytophthora gibbosa,6,6b,N,N,Y,Y,N,N,Y,N,
-Phytophthora gonapodyides,6,6b,Y,N,Y,Y,N,N,Y,Y,
-Phytophthora gregata,6,6b,N,N,Y,Y,N,N,Y,Y,
-Phytophthora lacustris,6,6b,N,N,N,N,N,N,Y,Y,
-Phytophthora litoralis,6,6b,Y,N,Y,N,N,N,Y,Y,
-Phytophthora megasperma,6,6b,Y,N,Y,Y,N,N,Y,N,
-Phytophthora mississippiae,6,6b,N,N,N,N,N,N,N,Y,
-Phytophthora moyootj,6,6b,N,N,Y,N,N,N,Y,Y,
-Phytophthora ornamentata,6,6b,Y,N,Y,Y,Y,N,Y,N,
-Phytophthora pinifolia,6,6b,Y,Y,N,N,N,Y,Y,N,
-Phytophthora riparia,6,6b,N,N,N,N,N,N,N,Y,
-Phytophthora thermophila,6,6b,N,N,Y,N,N,N,Y,Y,
-Phytophthora x stagnum,6,6b,N,N,N,N,N,N,N,Y,
-Phytophthora asparagi,6,6c,Y,Y,Y,Y,Y,N,Y,N,
-Phytophthora attenuata,7,7a,N,N,N,N,N,N,Y,N,
-Phytophthora cambivora,7,7a,Y,N,Y,Y,Y,N,Y,N,
-Phytophthora europaea,7,7a,Y,N,Y,Y,Y,N,Y,N,
-Phytophthora flexuosa,7,7a,N,N,N,N,N,N,Y,N,
-Phytophthora formosa,7,7a,N,N,N,N,N,N,Y,N,
-Phytophthora fragariae,7,7a,Y,N,Y,Y,N,N,Y,N,
-Phytophthora intricata,7,7a,N,N,N,N,N,N,Y,N,
-Phytophthora rubi,7,7a,Y,N,Y,Y,N,N,Y,N,
-Phytophthora tyrrhenica,7,7a,N,N,Y,N,N,N,Y,N,
-Phytophthora uliginosa,7,7a,Y,N,Y,Y,N,N,Y,N,
-Phytophthora uniformis,7,7a,Y,N,Y,Y,Y,N,Y,Y,
-Phytophthora vulcanica,7,7a,N,N,Y,N,N,N,Y,N,
-Phytophthora x alni,7,7a,Y,N,Y,Y,Y,N,Y,Y,
-Phytophthora x heterohybrida,7,7a,N,N,N,N,N,N,N,Y,
-Phytophthora x incrassata,7,7a,N,N,N,N,N,N,N,Y,
-Phytophthora x multiformis,7,7a,Y,N,Y,Y,Y,N,Y,Y,
-Phytophthora asiatica,7,7b,Y,Y,Y,Y,Y,Y,Y,N,
-Phytophthora cajani,7,7b,Y,N,Y,Y,Y,N,Y,N,
-Phytophthora melonis,7,7b,Y,N,Y,Y,N,N,Y,N,
-Phytophthora niederhauserii,7,7b,Y,N,Y,Y,Y,N,Y,N,
-Phytophthora pisi,7,7b,Y,N,Y,Y,N,N,Y,N,
-Phytophthora pistaciae,7,7b,Y,N,Y,Y,Y,N,Y,N,
-Phytophthora sojae,7,7b,Y,N,Y,Y,Y,N,Y,N,
-Phytophthora vignae,7,7b,Y,N,Y,Y,Y,N,Y,N,
-Phytophthora cinnamomi,7,7c,Y,N,Y,Y,Y,N,Y,N,
-Phytophthora parvispora,7,7c,Y,N,Y,Y,Y,N,Y,N,
-Phytophthora fragariaefolia,7,7d,Y,Y,N,N,N,Y,Y,N,
-Phytophthora nagaii,7,7d,Y,Y,N,N,N,Y,Y,N,
-Phytophthora 'kelmania',8,8a,Y,N,Y,Y,N,N,Y,N,
-Phytophthora cryptogea,8,8a,Y,N,Y,Y,N,N,Y,N,
-Phytophthora drechsleri,8,8a,Y,N,Y,Y,Y,N,Y,N,
-Phytophthora erythroseptica,8,8a,Y,Y,Y,Y,N,N,Y,N,
-Phytophthora medicaginis,8,8a,Y,N,Y,Y,N,N,Y,N,
-Phytophthora pseudocryptogea,8,8a,Y,N,Y,Y,N,N,Y,N,
-Phytophthora sansomeana,8,8a,Y,N,Y,Y,N,N,Y,N,
-Phytophthora trifolii,8,8a,Y,N,Y,Y,N,N,Y,N,
-Phytophthora 'castitis',8,8b,Y,Y,Y,Y,N,N,Y,N,
-Phytophthora 'parsley',8,8b,Y,Y,Y,Y,N,N,Y,N,
-Phytophthora brassicae,8,8b,Y,Y,Y,Y,N,Y,Y,N,
-Phytophthora cichorii,8,8b,Y,Y,Y,Y,N,N,Y,N,
-Phytophthora dauci,8,8b,Y,Y,Y,Y,N,N,Y,N,
-Phytophthora lactucae,8,8b,Y,Y,Y,Y,N,N,Y,N,
-Phytophthora porri,8,8b,Y,Y,Y,Y,N,N,Y,N,
-Phytophthora primulae,8,8b,Y,N,Y,Y,N,N,Y,N,
-Phytophthora pseudolactucae,8,8b,Y,N,Y,Y,N,N,Y,N,
-Phytophthora foliorum,8,8c,Y,Y,N,N,N,Y,Y,N,
-Phytophthora hibernalis,8,8c,Y,Y,Y,N,N,Y,Y,N,
-Phytophthora lateralis,8,8c,Y,N,Y,Y,N,N,Y,N,
-Phytophthora ramorum,8,8c,Y,Y,N,N,N,Y,Y,N,
-Phytophthora austrocedrae,8,8d,Y,N,Y,Y,Y,N,Y,N,
-Phytophthora obscura,8,8d,N,Y,N,N,Y,Y,Y,N,
-Phytophthora syringae,8,8d,Y,Y,Y,Y,Y,Y,Y,N,
-Phytophthora aquimorbida,9,9a,N,N,N,N,N,N,N,Y,
-Phytophthora chrysanthemi,9,9a,Y,N,Y,Y,Y,N,Y,N,
-Phytophthora estuarina,9,9a,N,N,N,N,N,N,N,Y,
-Phytophthora hydrogena,9,9a,N,N,N,N,N,N,N,Y,
-Phytophthora hydropathica,9,9a,Y,Y,N,N,N,N,N,Y,
-Phytophthora irrigata,9,9a,N,N,N,N,N,N,N,Y,
-Phytophthora macilentosa,9,9a,N,N,N,N,N,N,N,Y,
-Phytophthora parsiana,9,9a,Y,N,N,N,Y,N,Y,N,
-Phytophthora rhizophorae,9,9a,N,N,N,N,N,N,N,Y,
-Phytophthora virginiana,9,9a,N,N,N,N,N,N,Y,Y,
-Phytophthora 'prodigiosa',9,9b,Y,Y,N,N,Y,Y,Y,N,
-Phytophthora insolita,9,9b,N,N,N,N,N,N,Y,N,
-Phytophthora polonica,9,9b,Y,N,Y,Y,N,N,Y,N,
-Phytophthora pseudopolonica,9,9b,N,N,N,N,N,N,N,Y,
-Phytophthora macrochlamydospora,9,9c,Y,N,Y,N,Y,N,Y,N,
-Phytophthora quininea,9,9c,Y,N,Y,Y,Y,N,Y,N,
-Phytophthora richardiae,9,9c,Y,N,Y,Y,N,N,Y,N,
-Phytophthora cacuminis,9,9d,N,N,N,N,N,N,Y,N,
-Phytophthora captiosa,9,9d,Y,Y,N,N,N,Y,Y,N,
-Phytophthora constricta,9,9d,Y,N,Y,Y,N,N,Y,N,
-Phytophthora fallax,9,9d,Y,Y,N,N,N,Y,Y,N,
-Phytophthora boehmeriae,10,10,Y,Y,Y,Y,N,N,Y,N,
-Phytophthora gallica,10,10,N,N,Y,Y,N,N,Y,N,
-Phytophthora gondwanensis,10,10,N,N,Y,Y,N,N,Y,N,
-Phytophthora intercalaris,10,10,N,N,N,N,N,N,N,Y,
-Phytophthora kernoviae,10,10,Y,Y,Y,Y,Y,Y,Y,N,
-Phytophthora morindae,10,10,Y,Y,Y,N,N,Y,Y,N,
-Phytophthora 'ohioensis',11,11,Y,N,Y,Y,N,N,Y,N,
-Phytophthora quercina,11,11,Y,N,Y,Y,Y,N,Y,N,
-Phytophthora versiformis,11,11,N,N,Y,N,N,N,Y,N,
-Phytophthora castanetorum,11,,N,N,Y,N,N,N,Y,N,
-Phytophthora tubulina,11,,N,N,Y,N,N,N,Y,N,
-Phytophthora lilii,X,X,Y,N,N,N,Y,N,Y,N,
-Phytophthora stricta,X,X,N,N,N,N,N,N,N,Y,
-Phytophthora 'chiliensis',10,,,,,,,,,,
-Phytophthora 'pseudokernoviae' ,10,,,,,,,,,,
-Phytophthora 'valdiviana',2,2b,,,,,,,,,
-Phytophthora 'madida',8,8a,,,,,,,,,
-,,,,,,,,,,,
-,,,,,,,,,,,
-,,,,,,,,,,,
-,,,,,,,,,,,
-,,,,,,,,,,,
-,,,,,,,,,,,
-,,,,,,,,,,,
-,,,,,,,,,,,
-,,,,,,,,,,,
-,,,,,,,,,,,
-,,,,,,,,,,,
-,,,,,,,,,,,
-,,,,,,,,,,,
-,,,,,,,,,,,
-,,,,,,,,,,,
-,,,,,,,,,,,
-,,,,,,,,,,,
-,,,,,,,,,,,
-,,,,,,,,,,,
-,,,,,,,,,,,
-,,,,,,,,,,,
-,,,,,,,,,,,
-,,,,,,,,,,,
+species.name,phylo_clade,phylo_sub_clade,aeri_dispers,soil_dispers,water_dispers
+Phytophthora nicotianae,1,1,Y,Y,N
+Phytophthora 'aleatoria',1,1a,,,
+Phytophthora cactorum,1,1a,Y,Y,N
+Phytophthora hedraiandra,1,1a,Y,Y,N
+Phytophthora idaei,1,1a,N,Y,N
+Phytophthora pseudotsugae,1,1a,N,Y,N
+Phytophthora x peligrandis,1,1a,N,Y,N
+Phytophthora x serendipita,1,1a,N,Y,N
+Phytophthora clandestina,1,1b,N,Y,N
+Phytophthora iranica,1,1b,N,Y,N
+Phytophthora tentaculata,1,1b,N,Y,N
+Phytophthora betacei,1,1c,Y,Y,N
+Phytophthora urerae,1,1c,,,
+Phytophthora infestans,1,1c,Y,Y,N
+Phytophthora ipomoeae,1,1c,Y,Y,N
+Phytophthora mirabilis,1,1c,Y,Y,N
+Phytophthora phaseoli,1,1c,Y,Y,N
+Phytophthora x andina,1,1c,Y,Y,N
+Phytophthora oleae,2,2,Y?,N,N
+Phytophthora 'mekongensis',2,2a,Y,Y,N
+Phytophthora botryosa,2,2a,Y,Y,N
+Phytophthora citrophthora,2,2a,N,Y,N
+Phytophthora colocasiae,2,2a,Y,Y,N
+Phytophthora himalsilva,2,2a,N,Y,N
+Phytophthora meadii,2,2a,Y,Y,N
+Phytophthora occultans,2,2a,N,Y,N
+Phytophthora terminalis,2,2a,N,Y,N
+Phytophthora amaranthi,2,2b,Y,Y,N
+Phytophthora capsici,2,2b,Y,Y,N
+Phytophthora glovera,2,2b,N,Y,N
+Phytophthora mengei,2,2b,N,Y,N
+Phytophthora mexicana,2,2b,Y,Y,N
+Phytophthora siskiyouensis,2,2b,N,Y,N
+Phytophthora tropicalis,2,2b,Y,Y,N
+Phytophthora 'emanzi',2,2c,N,Y,N
+Phytophthora acerina,2,2c,N,Y,N
+Phytophthora capensis,2,2c,N,Y,N
+Phytophthora caryae,2,2c,N,Y,Y
+Phytophthora citricola,2,2c,N,Y,N
+Phytophthora multivora,2,2c,N,Y,N
+Phytophthora pachypleura,2,2c,N,Y,N
+Phytophthora pini,2,2c,N,Y,N
+Phytophthora plurivora,2,2c,N,Y,N
+Phytophthora 'acaciavora',2,2d,N,Y,N
+Phytophthora bishii,2,2d,N,Y,N
+Phytophthora elongata,2,2d,N,Y,N
+Phytophthora frigida,2,2d,N,Y,N
+Phytophthora 'aquatilis',2,2e,N,N,Y
+Phytophthora multivesiculata,2,2e,Y,Y,N
+Phytophthora ilicis,3,3,Y,Y,N
+Phytophthora nemorosa,3,3,Y,Y,N
+Phytophthora pluvialis,3,3,Y,Y,N
+Phytophthora pseudosyringae,3,3,N,Y,N
+Phytophthora psychrophila,3,3,N,Y,N
+Phytophthora 'totora',3,,,,
+Phytophthora alticola,4,4,N,Y,N
+Phytophthora arenaria,4,4,N,Y,N
+Phytophthora boodjera,4,4,N,Y,N
+Phytophthora litchii,4,4,N,Y,N
+Phytophthora megakarya,4,4,Y,Y,N
+Phytophthora palmivora,4,4,Y,Y,N
+Phytophthora quercetorum,4,4,N,Y,N
+Phytophthora agathidicida,5,5,N,Y,N
+Phytophthora castaneae,5,5,N,Y,N
+Phytophthora cocois,5,5,N,Y,N
+Phytophthora heveae,5,5,Y,Y,N
+Phytophthora oreophila,6,6a,N,Y,N
+Phytophthora 'personii',6,6a,N,Y,Y
+Phytophthora 'walnut',6,6a,N,Y,N
+Phytophthora balyanboodja,6,6a,N,Y,N
+Phytophthora chesapeakensis,6,6a,N,N,Y
+Phytophthora condilina,6,6a,N,Y,N
+Phytophthora cooljarloo,6,6a,N,Y,N
+Phytophthora gemini,6,6a,N,N,Y
+Phytophthora humicola,6,6a,N,Y,N
+Phytophthora inundata,6,6a,N,Y,Y
+Phytophthora kwongonina,6,6a,N,Y,N
+Phytophthora pseudorosacearum,6,6a,N,Y,N
+Phytophthora rosacearum,6,6a,N,Y,N
+Phytophthora 'paludosa',6,6b,N,Y,N
+Phytophthora 'raspberry',6,6b,N,Y,Y
+Phytophthora amnicola,6,6b,N,Y,Y
+Phytophthora bilorbang,6,6b,N,Y,Y
+Phytophthora borealis,6,6b,N,N,Y
+Phytophthora chlamydospora,6,6b,N,Y,Y
+Phytophthora crassamura,6,6b,N,Y,N
+Phytophthora fluvialis,6,6b,N,Y,Y
+Phytophthora gibbosa,6,6b,N,Y,N
+Phytophthora gonapodyides,6,6b,N,Y,Y
+Phytophthora gregata,6,6b,N,Y,Y
+Phytophthora lacustris,6,6b,N,Y,Y
+Phytophthora litoralis,6,6b,N,Y,Y
+Phytophthora megasperma,6,6b,N,Y,N
+Phytophthora mississippiae,6,6b,N,N,Y
+Phytophthora moyootj,6,6b,N,Y,Y
+Phytophthora ornamentata,6,6b,N,Y,N
+Phytophthora pinifolia,6,6b,Y,Y,N
+Phytophthora riparia,6,6b,N,N,Y
+Phytophthora thermophila,6,6b,N,Y,Y
+Phytophthora x stagnum,6,6b,N,N,Y
+Phytophthora asparagi,6,6c,N,Y,N
+Phytophthora attenuata,7,7a,N,Y,N
+Phytophthora cambivora,7,7a,N,Y,N
+Phytophthora europaea,7,7a,N,Y,N
+Phytophthora flexuosa,7,7a,N,Y,N
+Phytophthora formosa,7,7a,N,Y,N
+Phytophthora fragariae,7,7a,N,Y,N
+Phytophthora intricata,7,7a,N,Y,N
+Phytophthora rubi,7,7a,N,Y,N
+Phytophthora tyrrhenica,7,7a,N,Y,N
+Phytophthora uliginosa,7,7a,N,Y,N
+Phytophthora uniformis,7,7a,N,Y,Y
+Phytophthora vulcanica,7,7a,N,Y,N
+Phytophthora x alni,7,7a,N,Y,Y
+Phytophthora x heterohybrida,7,7a,N,N,Y
+Phytophthora x incrassata,7,7a,N,N,Y
+Phytophthora x multiformis,7,7a,N,Y,Y
+Phytophthora asiatica,7,7b,Y,Y,N
+Phytophthora cajani,7,7b,N,Y,N
+Phytophthora melonis,7,7b,N,Y,N
+Phytophthora niederhauserii,7,7b,N,Y,N
+Phytophthora pisi,7,7b,N,Y,N
+Phytophthora pistaciae,7,7b,N,Y,N
+Phytophthora sojae,7,7b,N,Y,N
+Phytophthora vignae,7,7b,N,Y,N
+Phytophthora cinnamomi,7,7c,N,Y,N
+Phytophthora parvispora,7,7c,N,Y,N
+Phytophthora fragariaefolia,7,7d,Y,Y,N
+Phytophthora nagaii,7,7d,Y,Y,N
+Phytophthora 'kelmania',8,8a,N,Y,N
+Phytophthora cryptogea,8,8a,N,Y,N
+Phytophthora drechsleri,8,8a,N,Y,N
+Phytophthora erythroseptica,8,8a,N,Y,N
+Phytophthora medicaginis,8,8a,N,Y,N
+Phytophthora pseudocryptogea,8,8a,N,Y,N
+Phytophthora sansomeana,8,8a,N,Y,N
+Phytophthora trifolii,8,8a,N,Y,N
+Phytophthora 'castitis',8,8b,N,Y,N
+Phytophthora 'parsley',8,8b,N,Y,N
+Phytophthora brassicae,8,8b,Y,Y,N
+Phytophthora cichorii,8,8b,N,Y,N
+Phytophthora dauci,8,8b,N,Y,N
+Phytophthora lactucae,8,8b,N,Y,N
+Phytophthora porri,8,8b,N,Y,N
+Phytophthora primulae,8,8b,N,Y,N
+Phytophthora pseudolactucae,8,8b,N,Y,N
+Phytophthora foliorum,8,8c,Y,Y,N
+Phytophthora hibernalis,8,8c,Y,Y,N
+Phytophthora lateralis,8,8c,N,Y,N
+Phytophthora ramorum,8,8c,Y,Y,N
+Phytophthora austrocedrae,8,8d,N,Y,N
+Phytophthora obscura,8,8d,Y,Y,N
+Phytophthora syringae,8,8d,Y,Y,N
+Phytophthora aquimorbida,9,9a,N,N,Y
+Phytophthora chrysanthemi,9,9a,N,Y,N
+Phytophthora estuarina,9,9a,N,N,Y
+Phytophthora hydrogena,9,9a,N,N,Y
+Phytophthora hydropathica,9,9a,N,N,Y
+Phytophthora irrigata,9,9a,N,N,Y
+Phytophthora macilentosa,9,9a,N,N,Y
+Phytophthora parsiana,9,9a,N,Y,N
+Phytophthora rhizophorae,9,9a,N,N,Y
+Phytophthora virginiana,9,9a,N,Y,Y
+Phytophthora 'prodigiosa',9,9b,Y,Y,N
+Phytophthora insolita,9,9b,N,Y,N
+Phytophthora polonica,9,9b,N,Y,N
+Phytophthora pseudopolonica,9,9b,N,N,Y
+Phytophthora macrochlamydospora,9,9c,N,Y,N
+Phytophthora quininea,9,9c,N,Y,N
+Phytophthora richardiae,9,9c,N,Y,N
+Phytophthora cacuminis,9,9d,N,Y,N
+Phytophthora captiosa,9,9d,Y,Y,N
+Phytophthora constricta,9,9d,N,Y,N
+Phytophthora fallax,9,9d,Y,Y,N
+Phytophthora boehmeriae,10,10,N,Y,N
+Phytophthora gallica,10,10,N,Y,N
+Phytophthora gondwanensis,10,10,N,Y,N
+Phytophthora intercalaris,10,10,N,N,Y
+Phytophthora kernoviae,10,10,Y,Y,N
+Phytophthora morindae,10,10,Y,Y,N
+Phytophthora 'ohioensis',11,11,N,Y,N
+Phytophthora quercina,11,11,N,Y,N
+Phytophthora versiformis,11,11,N,Y,N
+Phytophthora castanetorum,11,,N,Y,N
+Phytophthora tubulina,11,,N,Y,N
+Phytophthora lilii,X,X,N,Y,N
+Phytophthora stricta,X,X,N,N,Y
+Phytophthora 'chiliensis',10,,,,
+Phytophthora 'pseudokernoviae' ,10,,,,
+Phytophthora 'valdiviana',2,2b,,,
+Phytophthora 'madida',8,8a,,,
